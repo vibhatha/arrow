@@ -89,13 +89,20 @@ collapse.Dataset <- collapse.ArrowTabular <- function(x, ...) {
   arrow_dplyr_query(x)
 }
 
-add_suffix <- function(fields, by, suffix) {
+add_suffix <- function(fields, by, suffix, intersect_field_names) {
   # TODO: this method is adding suffixes
   # but the current C++ code in this branch does prefixes
   # so the code mimics a prefix but need to replace it with suffix
   # when merging with ARROW-15212 update. 
   col_names = names(fields)
-  new_colnames = col_names %>% map(function(x) {paste(suffix,x, sep="")})
+  new_colnames = col_names %>% map(function(x) {
+    if (x!=by && (x%in% intersect_field_names)) {
+      paste(x, suffix, sep="")
+      } 
+      else {
+        x=x
+      }
+    })
   rlang::set_names(fields, new_colnames)
 }
 
@@ -113,8 +120,9 @@ implicit_schema <- function(.data) {
         right_cols[setdiff(names(right_cols), .data$join$by)],
         ~ .$type(.data$join$right_data$.data$schema)
       )
-      left_fields = add_suffix(new_fields, .data$join$by, .data$join$suffix[[1]])
-      right_fields = add_suffix(right_fields, .data$join$by, .data$join$suffix[[2]])
+      intersect_field_names = intersect(names(new_fields), names(right_fields))
+      left_fields = add_suffix(new_fields, .data$join$by, .data$join$suffix[[1]], intersect_field_names)
+      right_fields = add_suffix(right_fields, .data$join$by, .data$join$suffix[[2]], intersect_field_names)
       new_fields <- c(left_fields, right_fields)
     }
   } else {

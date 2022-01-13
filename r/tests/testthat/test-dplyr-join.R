@@ -176,16 +176,12 @@ test_that("mutate then join", {
 
 test_that("self join", {
   out <- Table$create(left) %>%
-    left_join(Table$create(left[4:8]), by = "some_grouping") %>%
+    left_join(Table$create(left[4:8]), by = "some_grouping", suffix=c(".x", ".y")) %>%
     collect()
-
+  
   expect_equal(
     out,
     left %>%
-      left_join(left[4:8], by = "some_grouping") %>%
-      rename_with(.fn = function(x) {
-        x <- gsub("(.*)\\.x", "x.\\1", x)
-        x <- gsub("(.*)\\.y", "y.\\1", x)
-      })
+      left_join(left[4:8], by = "some_grouping")
   )
 })
