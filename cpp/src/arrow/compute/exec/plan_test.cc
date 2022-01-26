@@ -249,17 +249,17 @@ TEST(ExecPlanExecution, TableSourceSink) {
       AsyncGenerator<util::optional<ExecBatch>> sink_gen;
 
       auto exec_batches = MakeBasicBatches();
-      auto table = TableFromExecBatches(exec_batches.schema, exec_batches.batches)
+      ASSERT_OK_AND_ASSIGN(
+          auto table, TableFromExecBatches(exec_batches.schema, exec_batches.batches));
 
-      ASSERT_OK(Declaration::Sequence(
-                    {
-                        {"table", TableNodeOptions{table}},
-                        {"sink", SinkNodeOptions{&sink_gen}},
-                    })
+      ASSERT_OK(Declaration::Sequence({
+                                          {"table", TableSourceNodeOptions{table}},
+                                          {"sink", SinkNodeOptions{&sink_gen}},
+                                      })
                     .AddToPlan(plan.get()));
 
       ASSERT_THAT(StartAndCollect(plan.get(), sink_gen),
-                  Finishes(ResultWith(UnorderedElementsAreArray(basic_data.batches))));
+                  Finishes(ResultWith(UnorderedElementsAreArray(exec_batches.batches))));
     }
   }
 }
