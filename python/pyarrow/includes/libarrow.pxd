@@ -1793,6 +1793,18 @@ cdef extern from "arrow/compute/api.h" namespace "arrow::compute" nogil:
         CExecContext()
         CExecContext(CMemoryPool* pool)
 
+    cdef cppclass CExecBatch" arrow::compute::ExecBatch":
+        CExecBatch(const CRecordBatch& batch);
+        
+        @staticmethod
+        CResult[CExecBatch] Make(vector[CDatum] values)
+        CResult[shared_ptr[CRecordBatch]] ToRecordBatch(
+            shared_ptr[CSchema] schema, CMemoryPool* pool) const
+
+
+    cdef cppclass CKernelContext" arrow::compute::KernelContext":
+        CKernelContext(CExecContext* exec_ctx)
+
     cdef cppclass CKernelSignature" arrow::compute::KernelSignature":
         c_string ToString() const
 
@@ -1829,6 +1841,9 @@ cdef extern from "arrow/compute/api.h" namespace "arrow::compute" nogil:
 
         @staticmethod
         CInputType Scalar(shared_ptr[CDataType] type)
+
+    cdef cppclass COutputType" arrow::compute::OutputType":
+        COutputType(shared_ptr[CDataType] type)
 
     cdef enum FunctionKind" arrow::compute::Function::Kind":
         FunctionKind_SCALAR" arrow::compute::Function::SCALAR"
