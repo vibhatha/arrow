@@ -1801,6 +1801,9 @@ cdef extern from "arrow/compute/api.h" namespace "arrow::compute" nogil:
         CResult[shared_ptr[CRecordBatch]] ToRecordBatch(
             shared_ptr[CSchema] schema, CMemoryPool* pool) const
 
+        inline const CDatum& operator[](i) const
+        c_string ToString() const
+
 
     cdef cppclass CKernelContext" arrow::compute::KernelContext":
         CKernelContext(CExecContext* exec_ctx)
