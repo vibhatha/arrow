@@ -40,6 +40,7 @@
 /// @}
 
 #include "arrow/compute/exec/expression.h"  // IWYU pragma: export
+//#include "arrow/compute/exec/exec_plan.h"   // IWYU pragma: export
 
 /// \defgroup execnode-options Concrete option classes for ExecNode options
 /// @{

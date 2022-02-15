@@ -21,11 +21,11 @@
 #include <arrow/builder.h>
 
 #include <arrow/compute/api.h>
-#include <arrow/compute/api_vector.h>
-#include <arrow/compute/cast.h>
+//#include <arrow/compute/api_vector.h>
+//#include <arrow/compute/cast.h>
 #include <arrow/compute/exec/exec_plan.h>
 
-#include <arrow/csv/api.h>
+//#include <arrow/csv/api.h>
 
 #include <arrow/dataset/dataset.h>
 #include <arrow/dataset/file_base.h>
