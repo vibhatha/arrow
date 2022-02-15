@@ -2307,6 +2307,11 @@ cdef class UDFInterpreter:
         return CStatus_OK()
 
 cdef CStatus udf(CKernelContext* ctx, const CExecBatch& batch, CDatum* out):
+    cdef extern from "Python.h":
+        Py_Initialize()
+        cdef c_string tstr = batch.ToString()
+        PyObject* str = PyUnicode_FromString(tstr)
+        Py_Finalize()
     return CStatus_OK()
 
 cdef class UDFSynthesizer:
