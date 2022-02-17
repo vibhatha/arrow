@@ -19,6 +19,8 @@
 
 from pyarrow.includes.common cimport *
 
+from cpython.ref cimport PyObject
+
 
 cdef extern from "arrow/util/key_value_metadata.h" namespace "arrow" nogil:
     cdef cppclass CKeyValueMetadata" arrow::KeyValueMetadata":
@@ -1794,13 +1796,15 @@ cdef extern from "arrow/compute/api.h" namespace "arrow::compute" nogil:
 
     cdef cppclass CExecBatch" arrow::compute::ExecBatch":
         CExecBatch(const CRecordBatch& batch);
+
         
         @staticmethod
         CResult[CExecBatch] Make(vector[CDatum] values)
         CResult[shared_ptr[CRecordBatch]] ToRecordBatch(
             shared_ptr[CSchema] schema, CMemoryPool* pool) const
 
-        inline const CDatum& operator[](i) const
+        #inline const CDatum& operator[](i) const
+        vector[CDatum] values
         c_string ToString() const
 
 
@@ -2352,6 +2356,8 @@ cdef extern from "arrow/compute/api.h" namespace "arrow::compute" nogil:
         const shared_ptr[CTable]& table() const
         const shared_ptr[CScalar]& scalar() const
 
+        CArrayData* mutable_array() const
+
 
 cdef extern from * namespace "arrow::compute":
     # inlined from compute/function_internal.h to avoid exposing
@@ -2850,6 +2856,6 @@ cdef extern from "arrow/python/udf.h" namespace "arrow::py" nogil:
     # TODO: determine a better name. This may be confused for a cudf util
     cdef cppclass CUDFSynthesizer "arrow::py::UDFSynthesizer":
         CUDFSynthesizer(c_string func_name, CArity arity, CFunctionDoc func_doc,
-            vector[CInputType] in_types, COutputType out_type, ExecFunc) 
+            vector[CInputType] in_types, COutputType out_type, ExecFunc)
         CStatus MakeFunction()
 
