@@ -188,10 +188,28 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
+<<<<<<< HEAD
   auto status = RunDatasetParquetScan(argv);
   if (!status.ok()) {
     std::cerr << status.ToString() << std::endl;
     return EXIT_FAILURE;
   }
+=======
+  std::string path;
+  auto fs = GetFileSystemFromUri(argv[1], &path);
+
+  auto dataset = GetDatasetFromPath(fs, format, path);
+
+  auto scanner = GetScannerFromDataset(dataset, conf.projected_columns, conf.filter,
+                                       conf.use_threads);
+
+  auto table = GetTableFromScanner(scanner);
+  std::cout << "Table size: " << table->num_rows() << "\n";
+
+  std::cout << "Data : " << std::endl;
+
+  std::cout << table->ToString() << std::endl;
+
+>>>>>>> bb0232070 (initial fix)
   return EXIT_SUCCESS;
 }
