@@ -191,8 +191,7 @@ Status ResolveOneFieldRef(
   };
 
   if (const std::string* name = field_ref.name()) {
-    RETURN_NOT_OK(resolve_field_ref(name));
-    return Status::OK();
+    return resolve_field_ref(name);
   } else if (const FieldPath* path = field_ref.field_path()) {
     auto indices = path->indices();
     if (indices.size() > 1) {
@@ -200,7 +199,7 @@ Status ResolveOneFieldRef(
                                     ", Nested FieldPaths are not supported!");
     }
     int index = indices[0];
-    auto schema_field = manifest.schema_fields.at(index);
+    auto schema_field = manifest.schema_fields[index];
     auto col_name = schema_field.field->name();
     RETURN_NOT_OK(resolve_field_ref(&col_name));
     return Status::OK();
