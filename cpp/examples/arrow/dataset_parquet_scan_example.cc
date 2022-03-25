@@ -50,7 +50,7 @@ namespace ds = arrow::dataset;
 
 namespace cp = arrow::compute;
 
-// @brief Run Example
+// \brief Run Example
 // ./dataset-parquet-scan-example file:///sell_data.parquet
 // sample data set
 //           pickup_at dropoff_at  total_amount
@@ -80,9 +80,9 @@ struct Configuration {
   std::vector<std::string> projected_columns = {"pickup_at", "dropoff_at",
                                                 "total_amount"};
 
-  // Indicates the filter by which rows will be filtered. This optimization can
+  // Indicates the expression by which rows will be filtered. This optimization can
   // make use of partition information and/or file metadata if possible.
-  // Equivalent filter with field_name instead of field_index
+  // fields can be referenced by name or by index.  This example assumes the schema:
   // 0: pickup_at, 1: dropoff_at, 2: total_amount
   cp::Expression filter1 = cp::greater(cp::field_ref(2), cp::literal(1000));
   cp::Expression filter2 = cp::less(cp::field_ref("total_amount"), cp::literal(2000));
@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
   auto table = GetTableFromScanner(scanner);
   std::cout << "Table size: " << table->num_rows() << "\n";
 
-  std::cout << "Data : " << std::endl;
+  std::cout << "Data: " << std::endl;
 
   std::cout << table->ToString() << std::endl;
 
