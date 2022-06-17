@@ -480,6 +480,10 @@ compute__GetFunctionNames <- function() {
   .Call(`_arrow_compute__GetFunctionNames`)
 }
 
+RegisterScalarUDF <- function(name, fun) {
+  invisible(.Call(`_arrow_RegisterScalarUDF`, name, fun))
+}
+
 build_info <- function() {
   .Call(`_arrow_build_info`)
 }
@@ -2007,3 +2011,4 @@ SetIOThreadPoolCapacity <- function(threads) {
 Array__infer_type <- function(x) {
   .Call(`_arrow_Array__infer_type`, x)
 }
+
