@@ -688,6 +688,13 @@ class RScalarUDFCallable : public arrow::compute::ArrayKernelExec {
         cpp11::stop("arrow_scalar_function must return an Array or Scalar");
       }
     });
+
+    if (!fun_result.ok()) {
+      return fun_result.status();
+    }
+  
+    result->value =  std::move(ValueOrStop(fun_result)->data());
+    return arrow::Status::OK();
   }
 };
 
