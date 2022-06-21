@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "arrow/compute/api.h"
 #include "arrow/engine/substrait/extension_set.h"
 #include "arrow/engine/substrait/visibility.h"
 #include "arrow/type_fwd.h"
@@ -51,5 +52,8 @@ Result<ExtensionSet> GetExtensionSetFromPlan(
     const substrait::Plan& plan,
     const ExtensionIdRegistry* registry = default_extension_id_registry());
 
+ARROW_ENGINE_EXPORT
+Result<std::unique_ptr<substrait::Plan>> ToProto(const compute::ExecPlan& plan,
+                                                 ExtensionSet* ext_set);
 }  // namespace engine
 }  // namespace arrow

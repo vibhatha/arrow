@@ -38,6 +38,11 @@ namespace engine {
 /// each toplevel Substrait relation when deserializing a Substrait Plan.
 using ConsumerFactory = std::function<std::shared_ptr<compute::SinkNodeConsumer>()>;
 
+/// TODO: add docstrings
+ARROW_ENGINE_EXPORT
+Result<std::shared_ptr<Buffer>> SerializePlan(const compute::ExecPlan& plan,
+                                              ExtensionSet* ext_set);
+
 /// \brief Deserializes a Substrait Plan message to a list of ExecNode declarations
 ///
 /// \param[in] buf a buffer containing the protobuf serialization of a Substrait Plan

@@ -28,7 +28,6 @@
 namespace arrow {
 
 using internal::checked_cast;
-
 namespace engine {
 
 namespace internal {
@@ -131,6 +130,19 @@ Result<ExtensionSet> GetExtensionSetFromPlan(const substrait::Plan& plan,
 
   return ExtensionSet::Make(std::move(uris), std::move(type_ids), std::move(function_ids),
                             registry);
+}
+
+Result<std::unique_ptr<substrait::Plan>> ToProto(const compute::ExecPlan& plan,
+                                                 ExtensionSet* ext_set) {
+  auto subs_plan = internal::make_unique<substrait::Plan>();
+
+  /// TODO: populate Extension set
+
+  /// TODO: populate the list of PlanRel
+  ///       Here the ToProto(const compute::Declaration &decl, ExtensionSet *ext_set)
+  ///       function must be merged. This will populate the repated-field PlanRel ->
+  ///       list(Rel)
+  return std::move(subs_plan);
 }
 
 }  // namespace engine

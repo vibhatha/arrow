@@ -58,6 +58,13 @@ Result<compute::Declaration> DeserializeRelation(const Buffer& buf,
   return FromProto(rel, ext_set);
 }
 
+Result<std::shared_ptr<Buffer>> SerializePlan(const compute::ExecPlan& plan,
+                                              ExtensionSet* ext_set) {
+  ARROW_ASSIGN_OR_RAISE(auto plan_buf, ToProto(plan, ext_set));
+  std::string serialized = plan_buf->SerializeAsString();
+  return Buffer::FromString(std::move(serialized));
+}
+
 Result<std::vector<compute::Declaration>> DeserializePlans(
     const Buffer& buf, const ConsumerFactory& consumer_factory,
     ExtensionSet* ext_set_out) {
