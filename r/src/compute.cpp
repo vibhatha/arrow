@@ -598,8 +598,9 @@ class RScalarUDFOutputTypeResolver : public arrow::compute::OutputType::Resolver
 
       cpp11::writable::list input_types_sexp;
       input_types_sexp.reserve(descr.size());
-      for (const auto& item : descr) {
-        input_types_sexp.push_back(cpp11::to_r6<arrow::DataType>(item.type));
+
+      for (int i = 0; i < descr.size(); i++) {
+        input_types_sexp[i] = cpp11::to_r6<arrow::DataType>(descr[i].type);
       }
 
       cpp11::sexp output_type_sexp = state->resolver_(input_types_sexp);
@@ -688,13 +689,6 @@ class RScalarUDFCallable : public arrow::compute::ArrayKernelExec {
         cpp11::stop("arrow_scalar_function must return an Array or Scalar");
       }
     });
-
-    if (!fun_result.ok()) {
-      return fun_result.status();
-    }
-  
-    result->value =  std::move(ValueOrStop(fun_result)->data());
-    return arrow::Status::OK();
   }
 };
 
