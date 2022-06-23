@@ -51,5 +51,19 @@ Result<ExtensionSet> GetExtensionSetFromPlan(
     const substrait::Plan& plan,
     const ExtensionIdRegistry* registry = default_extension_id_registry());
 
+/// TODO: test code to ToProto ExtensionSet
+struct SubstraitExtensionSet{
+    substrait::extensions::SimpleExtensionURI simple_ext_uri;
+    substrait::extensions::SimpleExtensionDeclaration simple_declaration;
+    substrait::extensions::AdvancedExtension advanced_extension;
+}
+
+ARROW_ENGINE_EXPORT
+Result<SubstraitExtensionSet> ToProto(const ExtensionSet& extension_set) {
+    SubstraitExtensionSet subs_ext_set;
+    
+    return subs_ext_set;
+}
+
 }  // namespace engine
 }  // namespace arrow
