@@ -22,10 +22,13 @@
 #include "arrow/engine/substrait/extension_set.h"
 #include "arrow/engine/substrait/visibility.h"
 #include "arrow/type_fwd.h"
+#include "arrow/util/variant.h"
 
 #include "substrait/plan.pb.h"  // IWYU pragma: export
 
 namespace arrow {
+
+using util::Variant;
 namespace engine {
 
 /// \brief Replaces the extension information of a Substrait Plan message with the given
@@ -52,18 +55,19 @@ Result<ExtensionSet> GetExtensionSetFromPlan(
     const ExtensionIdRegistry* registry = default_extension_id_registry());
 
 /// TODO: test code to ToProto ExtensionSet
-struct SubstraitExtensionSet{
-    substrait::extensions::SimpleExtensionURI simple_ext_uri;
-    substrait::extensions::SimpleExtensionDeclaration simple_declaration;
-    substrait::extensions::AdvancedExtension advanced_extension;
-}
 
-ARROW_ENGINE_EXPORT
-Result<SubstraitExtensionSet> ToProto(const ExtensionSet& extension_set) {
-    SubstraitExtensionSet subs_ext_set;
-    
-    return subs_ext_set;
-}
+using SubsExtensionURI = substrait::extensions::SimpleExtensionURI;
+using SubsExtensionDeclaration = substrait::extensions::SimpleExtensionDeclaration;
+using SubsAdvancedExtension = substrait::extensions::AdvancedExtension;
+
+ARROW_ENGINE_EXPORT Result<std::unique_ptr<SubsExtensionURI>> GetExtensionURI(
+    const ExtensionSet& ext_set);
+
+ARROW_ENGINE_EXPORT Result<std::unique_ptr<SubsExtensionDeclaration>>
+GetExtensionDeclaration(const ExtensionSet& ext_set);
+
+ARROW_ENGINE_EXPORT Result<std::unique_ptr<SubsAdvancedExtension>> GetAdvancedExtension(
+    const ExtensionSet& ext_set);
 
 }  // namespace engine
 }  // namespace arrow

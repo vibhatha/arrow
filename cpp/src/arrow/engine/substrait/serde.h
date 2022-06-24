@@ -167,6 +167,9 @@ Result<std::shared_ptr<Buffer>> SubstraitFromJSON(util::string_view type_name,
 ARROW_ENGINE_EXPORT
 Result<std::string> SubstraitToJSON(util::string_view type_name, const Buffer& buf);
 
+
+ARROW_ENGINE_EXPORT Result<std::shared_ptr<Buffer>> SerializePlan(const compute::ExecPlan& exec_plan, const ExtensionSet& ext_set);
+
 }  // namespace internal
 }  // namespace engine
 }  // namespace arrow

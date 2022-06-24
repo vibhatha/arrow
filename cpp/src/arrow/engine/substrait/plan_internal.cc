@@ -133,5 +133,15 @@ Result<ExtensionSet> GetExtensionSetFromPlan(const substrait::Plan& plan,
                             registry);
 }
 
+Result<std::unique_ptr<SubsExtensionURI>> GetExtensionURI(
+    const ExtensionSet& ext_set) {
+
+      auto out = internal::make_unique<SubsExtensionURI>();
+      int64_t num_uris = ext_set.uris().size();
+
+      std::cout << "Num Uris : " << num_uris << std::endl;  
+      return out;
+}
+
 }  // namespace engine
 }  // namespace arrow
