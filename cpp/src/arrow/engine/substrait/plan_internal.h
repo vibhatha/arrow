@@ -60,8 +60,8 @@ using SubsExtensionURI = substrait::extensions::SimpleExtensionURI;
 using SubsExtensionDeclaration = substrait::extensions::SimpleExtensionDeclaration;
 using SubsAdvancedExtension = substrait::extensions::AdvancedExtension;
 
-ARROW_ENGINE_EXPORT Result<std::unique_ptr<SubsExtensionURI>> GetExtensionURI(
-    const ExtensionSet& ext_set);
+ARROW_ENGINE_EXPORT Result<std::vector<std::unique_ptr<SubsExtensionURI>>>
+GetExtensionURIs(const ExtensionSet& ext_set);
 
 ARROW_ENGINE_EXPORT Result<std::unique_ptr<SubsExtensionDeclaration>>
 GetExtensionDeclaration(const ExtensionSet& ext_set);

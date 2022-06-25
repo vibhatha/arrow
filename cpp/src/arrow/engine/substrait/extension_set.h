@@ -188,6 +188,8 @@ class ARROW_ENGINE_EXPORT ExtensionSet {
 
   const std::unordered_map<uint32_t, util::string_view>& uris() const { return uris_; }
 
+  std::unordered_map<uint32_t, TypeRecord>& types() const { return types_; }
+
   /// \brief Returns a data type given an anchor
   ///
   /// This is used when converting a Substrait plan to an Arrow execution plan.

@@ -1173,13 +1173,5 @@ TEST(Substrait, JoinPlanInvalidKeys) {
           &ext_set));
 }
 
-TEST(Substrait, SerializeExtensionSetBasic) {
-  ExtensionSet ext_set;
-  compute::ExecContext exec_context;
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<compute::ExecPlan> plan,
-                        compute::ExecPlan::Make(&exec_context));
-  ASSERT_OK_AND_ASSIGN(auto out, internal::SerializePlan(*plan, ext_set));
-}
-
 }  // namespace engine
 }  // namespace arrow

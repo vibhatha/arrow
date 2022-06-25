@@ -133,14 +133,45 @@ Result<ExtensionSet> GetExtensionSetFromPlan(const substrait::Plan& plan,
                             registry);
 }
 
-Result<std::unique_ptr<SubsExtensionURI>> GetExtensionURI(
+Result<std::vector<std::unique_ptr<SubsExtensionURI>>> GetExtensionURIs(
     const ExtensionSet& ext_set) {
+  std::vector<std::unique_ptr<SubsExtensionURI>> ext_uris;
+  ext_uris.reserve(ext_set.uris().size());
+  int64_t uri_id = 0;
+  for (const auto& uri : ext_set.uris()) {
+    auto out = internal::make_unique<SubsExtensionURI>();
+    out->set_extension_uri_anchor(uri.first);
+    *out->mutable_uri() = std::string(uri.second);
+    ext_uris[uri_id] = std::move(out);
+    uri_id++;
+  }
+  return std::move(ext_uris);
+}
 
-      auto out = internal::make_unique<SubsExtensionURI>();
-      int64_t num_uris = ext_set.uris().size();
+Result<std::unique_ptr<SubsExtensionDeclaration>> GetExtensionDeclaration(const ExtensionSet& ext_set) {
+  std::vector<std::unique_ptr<SubsExtensionDeclaration>> ext_decls;
 
-      std::cout << "Num Uris : " << num_uris << std::endl;  
-      return out;
+  ARROW_ASSIGN_OR_RAISE(auto ext_uris, GetExtensionURIs(ext_set);
+
+  auto dec_ext_type = internal::make_unique<SubsExtensionDeclaration::ExtensionType>();
+  auto dec_ext_func = internal::make_unique<SubsExtensionDeclaration::ExtensionFunction>();
+  auto dec_ext_type_var = internal::make_unique<SubsExtensionDeclaration::ExtensionTypeVariation>();
+  ext_decls.reserve(ext_set.num_types());
+  for (uint32_t anchor = 0; anchor < ext_set.num_types(); ++anchor) {
+    ARROW_ASSIGN_OR_RAISE(auto type_record, ext_set.DecodeType(anchor));
+    if (type_record.id.empty()) continue;
+
+    auto ext_decl = internal::make_unique<SubsExtensionDeclaration>();
+
+    auto type = internal::make_unique<SubsExtensionDeclaration::ExtensionType>();
+  
+    type->set_extension_uri_reference(map[type_record.id.uri]);
+    type->set_type_anchor(anchor);
+    type->set_name(type_record.id.name.to_string());
+    ext_decl->set_allocated_extension_type(type.release());
+    ext_decls[anchor] = std::move(ext_decl);
+  }
+  return ext_decls;
 }
 
 }  // namespace engine
