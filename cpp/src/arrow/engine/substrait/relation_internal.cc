@@ -338,7 +338,7 @@ enum ArrowRelationType : uint8_t {
 
 const std::map<std::string, ArrowRelationType> enum_map{
     {"scan", ArrowRelationType::SCAN},           {"filter", ArrowRelationType::FILTER},
-    {"project", ArrowRelationType::PROJECT},     {"join", ArrowRelationType::JOIN},
+    {"project", ArrowRelationType::PROJECT},     {"hashjoin", ArrowRelationType::JOIN},
     {"aggregate", ArrowRelationType::AGGREGATE},
 };
 
@@ -356,7 +356,7 @@ struct ExtractRelation {
       case ArrowRelationType::PROJECT:
         return Status::NotImplemented("Project operator not supported.");
       case ArrowRelationType::JOIN:
-        return Status::NotImplemented("Join operator not supported.");
+        return AddJoinRelation(declaration);
       case ArrowRelationType::AGGREGATE:
         return Status::NotImplemented("Aggregate operator not supported.");
       default:
@@ -387,7 +387,7 @@ struct ExtractRelation {
       read_rel_lfs_ffs->set_uri_path("file://" + file);
 
       // set file format
-      // arrow and feather are temporarily handled via the Parquet format until 
+      // arrow and feather are temporarily handled via the Parquet format until
       // upgraded to the latest Substrait version.
       auto format_type_name = dataset->format()->type_name();
       if (format_type_name == "parquet" || format_type_name == "arrow" ||
@@ -405,11 +405,76 @@ struct ExtractRelation {
     return Status::OK();
   }
 
+  Status AddJoinRelation(const compute::Declaration& declaration) {
+    std::cout << "Add Join Relation" << std::endl;
+    auto join_rel = internal::make_unique<substrait::JoinRel>();
+    const auto& join_node_options =
+        internal::checked_cast<const compute::HashJoinNodeOptions&>(*declaration.options);
+    auto get_schemas =
+        [](const compute::Declaration& declr) -> std::vector<std::shared_ptr<Schema>> {
+      return {};
+    };
+    auto schemas = get_schemas(declaration);
+    ARROW_ASSIGN_OR_RAISE(auto inputs,
+                          GetJoinRelationFromDeclaration(declaration, ext_set_));
+    if (inputs.size() != 2) {
+      return Status::Invalid("Join declaration doesn't include left and right inputs.");
+    }
+    *join_rel->mutable_left() = std::move(*inputs[0]);
+    *join_rel->mutable_right() = std::move(*inputs[1]);
+    // unclear point where multiple-column joins are supported in Substrait
+    compute::Expression left_key = compute::field_ref(join_node_options.left_keys[0]);
+    compute::Expression right_key = compute::field_ref(join_node_options.right_keys[0]);
+
+    // TODO get the schema of the join keys
+    // auto left_schema = schema({});
+    // auto right_schema = schema({});
+
+    const auto join_key_cmp = join_node_options.key_cmp[0];
+    compute::Expression join_expression;
+    if (join_key_cmp == compute::JoinKeyCmp::EQ) {
+      compute::Expression left_expr = left_key;
+      compute::Expression right_expr = right_key;
+
+      // TODO add Bind
+      // ARROW_ASSIGN_OR_RAISE(left_expr, left_expr.Bind(*left_schema)));
+      // ARROW_ASSIGN_OR_RAISE(right_expr, right_expr.Bind(*right_schema));
+      join_expression = compute::equal(left_expr, right_expr);
+    } else if (join_key_cmp == compute::JoinKeyCmp::IS) {
+      return Status::NotImplemented("is_not_distinct_from not implemented");
+    } else {
+      return Status::Invalid("Unsupported JoinKeyCmp");
+    }
+    ARROW_ASSIGN_OR_RAISE(auto sub_join_expr, ToProto(join_expression, ext_set_));
+    join_rel->set_allocated_expression(sub_join_expr.release());
+
+    rel_->set_allocated_join(join_rel.release());
+    return Status::OK();
+  }
+
   Status operator()(const compute::Declaration& declaration) {
     return AddRelation(declaration);
   }
 
  private:
+  Result<std::vector<std::unique_ptr<substrait::Rel>>> GetJoinRelationFromDeclaration(
+      const compute::Declaration declaration, ExtensionSet* ext_set) {
+    auto declr_left = declaration.inputs[0];
+    auto declr_right = declaration.inputs[1];
+    // TODO: figure out a better way
+    if (util::get_if<compute::ExecNode*>(&declr_left) ||
+        util::get_if<compute::ExecNode*>(&declr_right)) {
+      return Status::NotImplemented("Only support Plans written in Declaration format.");
+    }
+    std::vector<std::unique_ptr<substrait::Rel>> rels;
+    ARROW_ASSIGN_OR_RAISE(auto left_rel,
+                          ToProto(util::get<compute::Declaration>(declr_left), ext_set));
+    ARROW_ASSIGN_OR_RAISE(auto right_rel,
+                          ToProto(util::get<compute::Declaration>(declr_right), ext_set));
+    rels.emplace_back(std::move(left_rel));
+    rels.emplace_back(std::move(right_rel));
+    return rels;
+  }
   substrait::Rel* rel_;
   ExtensionSet* ext_set_;
 };

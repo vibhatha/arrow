@@ -1541,5 +1541,104 @@ TEST(Substrait, SerializeRelationEndToEnd) {
 #endif
 }
 
+TEST(Substrait, SerializeJoinRelation) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#else
+  ExtensionSet ext_set;
+  compute::ExecContext exec_context;
+
+  ASSERT_OK_AND_ASSIGN(std::string dir_string,
+                       arrow::internal::GetEnvVar("PARQUET_TEST_DATA"));
+  auto file_name = arrow::internal::PlatformFilename::FromString(dir_string)
+                       ->Join("alltypes_plain.parquet");
+
+  // Note: left the timestamp field since it is not supported.
+  // Add it back once it is added.
+  auto dummy_schema = schema({
+      field("id", int32()),
+      field("bool_col", boolean()),
+      field("tinyint_col", int32()),
+  });
+
+  auto format = std::make_shared<arrow::dataset::ParquetFileFormat>();
+  auto filesystem = std::make_shared<fs::LocalFileSystem>();
+
+  std::vector<fs::FileInfo> l_files, r_files;
+  const std::string f_path = file_name->ToString();
+  ASSERT_OK_AND_ASSIGN(auto lf_file, filesystem->GetFileInfo(f_path));
+  l_files.push_back(std::move(lf_file));
+  ASSERT_OK_AND_ASSIGN(auto rf_file, filesystem->GetFileInfo(f_path));
+  r_files.push_back(std::move(rf_file));
+
+  ASSERT_OK_AND_ASSIGN(auto l_ds_factory,
+                       dataset::FileSystemDatasetFactory::Make(
+                           filesystem, std::move(l_files), format, {}));
+  ASSERT_OK_AND_ASSIGN(auto r_ds_factory,
+                       dataset::FileSystemDatasetFactory::Make(
+                           filesystem, std::move(r_files), format, {}));
+
+  ASSERT_OK_AND_ASSIGN(auto l_dataset, l_ds_factory->Finish(dummy_schema));
+  ASSERT_OK_AND_ASSIGN(auto r_dataset, r_ds_factory->Finish(dummy_schema));
+
+  auto l_options = std::make_shared<dataset::ScanOptions>();
+  auto r_options = std::make_shared<dataset::ScanOptions>();
+
+  l_options->projection = compute::project({}, {});
+  r_options->projection = compute::project({}, {});
+
+  auto l_scan_node_options = dataset::ScanNodeOptions{l_dataset, l_options};
+  auto r_scan_node_options = dataset::ScanNodeOptions{r_dataset, r_options};
+
+  auto left_declr = compute::Declaration({"scan", l_scan_node_options});
+
+  auto right_declr = compute::Declaration({"scan", r_scan_node_options});
+
+  compute::HashJoinNodeOptions join_opts{
+      compute::JoinType::INNER,
+      /*left_keys=*/{"id"},
+      /*right_keys=*/{"id"},    compute::literal(true), "_l", "_r"};
+
+  compute::Declaration join_declr{"hashjoin", join_opts};
+
+  // add left source
+  join_declr.inputs.emplace_back(left_declr);
+  // add right source
+  join_declr.inputs.emplace_back(right_declr);
+
+  std::shared_ptr<arrow::Table> output_table;
+  auto table_sink_options = compute::TableSinkNodeOptions{&output_table};
+
+  auto sink_declr = compute::Declaration({"table_sink", table_sink_options});
+
+  auto declarations = compute::Declaration::Sequence({join_declr, sink_declr});
+
+  ASSERT_OK_AND_ASSIGN(auto plan, compute::ExecPlan::Make(&exec_context));
+  ASSERT_OK_AND_ASSIGN(auto decl, declarations.AddToPlan(plan.get()));
+
+  ASSERT_OK(decl->Validate());
+
+  ASSERT_OK(plan->Validate());
+  ASSERT_OK(plan->StartProducing());
+
+  auto finished = plan->finished();
+  ASSERT_OK(finished.status());
+  std::cout << output_table->schema()->ToString(true) << std::endl;
+
+  ASSERT_OK_AND_ASSIGN(auto serialized_rel, SerializeRelation(join_declr, &ext_set));
+
+  // arrow::AsyncGenerator<util::optional<compute::ExecBatch> > sink_gen;
+  // auto sink_node_options = compute::SinkNodeOptions{&sink_gen};
+  // std::shared_ptr<arrow::RecordBatchReader> sink_reader = compute::MakeGeneratorReader(
+  //     dummy_schema, std::move(sink_gen), exec_context.memory_pool());
+
+  // std::shared_ptr<arrow::Table> response_table;
+
+  // ASSERT_OK_AND_ASSIGN(response_table,
+  //                      arrow::Table::FromRecordBatchReader(sink_reader.get()));
+
+#endif
+}
+
 }  // namespace engine
 }  // namespace arrow
