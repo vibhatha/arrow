@@ -410,11 +410,6 @@ struct ExtractRelation {
     auto join_rel = internal::make_unique<substrait::JoinRel>();
     const auto& join_node_options =
         internal::checked_cast<const compute::HashJoinNodeOptions&>(*declaration.options);
-    auto get_schemas =
-        [](const compute::Declaration& declr) -> std::vector<std::shared_ptr<Schema>> {
-      return {};
-    };
-    auto schemas = get_schemas(declaration);
     ARROW_ASSIGN_OR_RAISE(auto inputs,
                           GetJoinRelationFromDeclaration(declaration, ext_set_));
     if (inputs.size() != 2) {
@@ -427,15 +422,14 @@ struct ExtractRelation {
     compute::Expression right_key = compute::field_ref(join_node_options.right_keys[0]);
 
     // TODO get the schema of the join keys
-    // auto left_schema = schema({});
-    // auto right_schema = schema({});
+    //auto left_schema = schema({});
+    //auto right_schema = schema({});
 
     const auto join_key_cmp = join_node_options.key_cmp[0];
     compute::Expression join_expression;
     if (join_key_cmp == compute::JoinKeyCmp::EQ) {
       compute::Expression left_expr = left_key;
       compute::Expression right_expr = right_key;
-
       // TODO add Bind
       // ARROW_ASSIGN_OR_RAISE(left_expr, left_expr.Bind(*left_schema)));
       // ARROW_ASSIGN_OR_RAISE(right_expr, right_expr.Bind(*right_schema));
