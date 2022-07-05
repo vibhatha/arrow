@@ -418,6 +418,15 @@ struct ExtractRelation {
     *join_rel->mutable_left() = std::move(*inputs[0]);
     *join_rel->mutable_right() = std::move(*inputs[1]);
     // unclear point where multiple-column joins are supported in Substrait
+
+    // here what happens is there will be a compute::Expression for each key
+    // so for substrait::Expression it would be a set of compute::Expression which are
+    // callers being connected by and operation
+    // exp1 = compute::equal(l1, r1)
+    // exp2 = compute::equal(l2, r2)
+    // exp3 = compute::is...(l3, r3)
+    // ....
+    // substrait::Expression <= ToProto(compute::and(exp1, exp2, exp3, ...))
     compute::Expression left_key = compute::field_ref(join_node_options.left_keys[0]);
     compute::Expression right_key = compute::field_ref(join_node_options.right_keys[0]);
 
