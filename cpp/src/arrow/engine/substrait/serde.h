@@ -35,6 +35,10 @@
 namespace arrow {
 namespace engine {
 
+ARROW_ENGINE_EXPORT
+Result<std::shared_ptr<Buffer>> SerializePlan(const compute::ExecPlan& plan,
+                                              ExtensionSet* ext_set);
+
 /// Factory function type for generating the node that consumes the batches produced by
 /// each toplevel Substrait relation when deserializing a Substrait Plan.
 using ConsumerFactory = std::function<std::shared_ptr<compute::SinkNodeConsumer>()>;
@@ -115,6 +119,10 @@ ARROW_ENGINE_EXPORT Result<compute::ExecPlan> DeserializePlan(
     const Buffer& buf, const std::shared_ptr<dataset::WriteNodeOptions>& write_options,
     const ExtensionIdRegistry* registry = NULLPTR, ExtensionSet* ext_set_out = NULLPTR);
 
+ARROW_ENGINE_EXPORT Result<compute::ExecPlan> DeserializePlan(
+    const Buffer& buf, const ConsumerFactory& consumer_factory,
+    ExtensionSet* ext_set_out = NULLPTR);
+
 /// \brief Deserializes a Substrait Type message to the corresponding Arrow type
 ///
 /// \param[in] buf a buffer containing the protobuf serialization of a Substrait Type
@@ -180,6 +188,16 @@ Result<compute::Expression> DeserializeExpression(const Buffer& buf,
 ARROW_ENGINE_EXPORT
 Result<std::shared_ptr<Buffer>> SerializeExpression(const compute::Expression& expr,
                                                     ExtensionSet* ext_set);
+
+/// \brief Serializes an Arrow compute Declaration to a Substrait Relation message
+///
+/// \param[in] declaration the Arrow compute declaration to serialize
+/// \param[in,out] ext_set the extension mapping to use; may be updated to add
+/// mappings for the components in the used declaration
+/// \return a buffer containing the protobuf serialization of the corresponding Substrait
+/// Relation message
+ARROW_ENGINE_EXPORT Result<std::shared_ptr<Buffer>> SerializeRelation(
+    const compute::Declaration& declaration, ExtensionSet* ext_set);
 
 /// \brief Deserializes a Substrait Rel (relation) message to an ExecNode declaration
 ///
