@@ -251,7 +251,7 @@ struct EmitValidate {
       ASSERT_OK_AND_ASSIGN(auto output_table,
                            GetTableFromPlan(acero_plan, declarations, sink_gen,
                                             exec_context, output_schema));
-      EXPECT_TRUE(expected_table->Equals(*output_table));
+      EXPECT_TRUE(expected_table->Equals(*output_table, true));
     }
   }
   std::shared_ptr<Schema> output_schema;
@@ -1973,6 +1973,7 @@ TEST(Substrait, ProjectRel) {
                        arrow::internal::TemporaryDir::Make("substrait_project_tempdir"));
 
   TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
   std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
   std::string substrait_json = R"({
@@ -2063,10 +2064,13 @@ TEST(Substrait, ProjectRel) {
     [1, 1, 10, 2],
     [3, 4, 20, 7]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf);
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
 }
 
 TEST(Substrait, ProjectRelOnFunctionWithEmit) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#endif
   compute::ExecContext exec_context;
   auto dummy_schema =
       schema({field("A", int32()), field("B", int32()), field("C", int32())});
@@ -2082,6 +2086,7 @@ TEST(Substrait, ProjectRelOnFunctionWithEmit) {
                                          "substrait_project_emit_tempdir"));
 
   TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
   std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
   std::string substrait_json = R"({
@@ -2176,10 +2181,13 @@ TEST(Substrait, ProjectRelOnFunctionWithEmit) {
       [1, 10, 2],
       [3, 20, 7]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf);
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
 }
 
 TEST(Substrait, ReadRelWithEmit) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#endif
   compute::ExecContext exec_context;
   auto dummy_schema =
       schema({field("A", int32()), field("B", int32()), field("C", int32())});
@@ -2195,6 +2203,7 @@ TEST(Substrait, ReadRelWithEmit) {
   std::string file_prefix = "serde_read_emit_test";
 
   TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
   std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
   std::string substrait_json = R"({
@@ -2238,7 +2247,131 @@ TEST(Substrait, ReadRelWithEmit) {
       [1, 10],
       [4, 20]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf);
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+}
+
+TEST(Substrait, FilterRelWithEmit) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#endif
+  compute::ExecContext exec_context;
+  auto dummy_schema = schema({field("A", int32()), field("B", int32()),
+                              field("C", int32()), field("D", int32())});
+
+  // creating a dummy dataset using a dummy table
+  auto input_table = TableFromJSON(dummy_schema, {R"([
+      [10, 1, 80, 7],
+      [20, 2, 70, 6],
+      [30, 3, 30, 5],
+      [40, 4, 20, 4],
+      [40, 5, 40, 3],
+      [20, 6, 20, 2],
+      [30, 7, 30, 1]
+  ])"});
+
+  ASSERT_OK_AND_ASSIGN(auto tempdir,
+                       arrow::internal::TemporaryDir::Make("substrait_read_tempdir"));
+  std::string file_prefix = "serde_read_emit_test";
+
+  TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
+  std::string substrait_file_uri = "file://" + datagen.data_file_path;
+
+  std::string substrait_json = R"({
+  "relations": [{
+    "rel": {
+      "filter": {
+        "common": {
+          "emit": {
+            "outputMapping": [1, 3]
+          }
+        },
+        "condition": {
+          "scalarFunction": {
+            "functionReference": 0,
+            "arguments": [{
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 0
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }, {
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 2
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }]
+          }
+        },
+        "input" : {
+          "read": {
+            "base_schema": {
+              "names": ["A", "B", "C", "D"],
+                "struct": {
+                "types": [{
+                  "i32": {}
+                }, {
+                  "i32": {}
+                }, {
+                  "i32": {}
+                },{
+                  "i32": {}
+                }]
+              }
+            },
+            "local_files": {
+              "items": [
+                {
+                  "uri_file": ")" +
+                               substrait_file_uri +
+                               R"(",
+                  "parquet": {}
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }],
+  "extension_uris": [
+      {
+        "extension_uri_anchor": 0,
+        "uri": ")" + substrait::default_extension_types_uri() +
+                               R"("
+      }
+    ],
+    "extensions": [
+      {"extension_function": {
+        "extension_uri_reference": 0,
+        "function_anchor": 0,
+        "name": "equal"
+      }}
+    ]
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+  auto output_schema = schema({field("B", int32()), field("D", int32())});
+  auto expected_table = TableFromJSON(output_schema, {R"([
+      [3, 5],
+      [5, 3],
+      [6, 2],
+      [7, 1]
+  ])"});
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
 }
 
 TEST(Substrait, BasicPlanRoundTripping) {
