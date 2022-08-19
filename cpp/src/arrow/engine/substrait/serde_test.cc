@@ -229,13 +229,12 @@ struct EmitValidate {
   EmitValidate(const std::shared_ptr<Schema> output_schema,
                const std::shared_ptr<Table> expected_table,
                compute::ExecContext& exec_context, std::shared_ptr<Buffer>& buf,
-               const std::vector<int>& include_columns = {}, bool combine_chunks = false)
+               const std::vector<int>& include_columns = {})
       : output_schema(output_schema),
         expected_table(expected_table),
         exec_context(exec_context),
         buf(buf),
-        include_columns(include_columns),
-        combine_chunks(combine_chunks) {}
+        include_columns(include_columns) {}
   void operator()() {
     for (auto sp_ext_id_reg :
          {std::shared_ptr<ExtensionIdRegistry>(), MakeExtensionIdRegistry()}) {
@@ -257,22 +256,7 @@ struct EmitValidate {
       if (!include_columns.empty()) {
         ASSERT_OK_AND_ASSIGN(output_table, output_table->SelectColumns(include_columns));
       }
-      if (combine_chunks) {
-        ASSERT_OK_AND_ASSIGN(output_table, output_table->CombineChunks());
-      }
-
       EXPECT_TRUE(expected_table->Equals(*output_table));
-      std::cout << "output" << std::endl;
-      std::cout << std::string(10, '#') << std::endl;
-      std::cout << output_table->ToString() << std::endl;
-      std::cout << std::string(10, '#') << std::endl;
-      std::cout << output_table->schema()->ToString(false) << std::endl;
-
-      std::cout << "expected" << std::endl;
-      std::cout << std::string(10, '#') << std::endl;
-      std::cout << expected_table->ToString() << std::endl;
-      std::cout << std::string(10, '#') << std::endl;
-      std::cout << expected_table->schema()->ToString(false) << std::endl;
     }
   }
   std::shared_ptr<Schema> output_schema;
@@ -280,7 +264,6 @@ struct EmitValidate {
   compute::ExecContext exec_context;
   std::shared_ptr<Buffer> buf;
   const std::vector<int>& include_columns;
-  bool combine_chunks;
 };
 
 TEST(Substrait, SupportedTypes) {
@@ -1977,239 +1960,256 @@ TEST(Substrait, AggregateBadPhase) {
   ASSERT_RAISES(NotImplemented, DeserializePlans(*buf, [] { return kNullConsumer; }));
 }
 
-// TEST(Substrait, ProjectRel) {
-// #ifdef _WIN32
-//   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
-// #endif
-//   compute::ExecContext exec_context;
-//   auto dummy_schema =
-//       schema({field("A", int32()), field("B", int32()), field("C", int32())});
+TEST(Substrait, ProjectRel) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#endif
+  compute::ExecContext exec_context;
+  auto dummy_schema =
+      schema({field("A", int32()), field("B", int32()), field("C", int32())});
 
-//   // creating a dummy dataset using a dummy table
-//   auto input_table = TableFromJSON(dummy_schema, {R"([
-//       [1, 1, 10],
-//       [3, 4, 20]
-//   ])"});
+  // creating a dummy dataset using a dummy table
+  auto input_table = TableFromJSON(dummy_schema, {R"([
+      [1, 1, 10],
+      [3, 5, 20],
+      [4, 1, 30],
+      [2, 1, 40],
+      [5, 5, 50],
+      [2, 2, 60]
+  ])"});
 
-//   std::string file_prefix = "serde_project_test";
-//   ASSERT_OK_AND_ASSIGN(auto tempdir,
-//                        arrow::internal::TemporaryDir::Make("substrait_project_tempdir"));
+  std::string file_prefix = "serde_project_test";
+  ASSERT_OK_AND_ASSIGN(auto tempdir,
+                       arrow::internal::TemporaryDir::Make("substrait_project_tempdir"));
 
-//   TempDataGenerator datagen(input_table, file_prefix, tempdir);
-//   ASSERT_OK(datagen());
-//   std::string substrait_file_uri = "file://" + datagen.data_file_path;
+  TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
+  std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
-//   std::string substrait_json = R"({
-//   "relations": [{
-//     "rel": {
-//       "project": {
-//         "expressions": [{
-//           "scalarFunction": {
-//             "functionReference": 0,
-//             "arguments": [{
-//               "value": {
-//                 "selection": {
-//                   "directReference": {
-//                     "structField": {
-//                       "field": 0
-//                     }
-//                   },
-//                   "rootReference": {
-//                   }
-//                 }
-//               }
-//             }, {
-//               "value": {
-//                 "selection": {
-//                   "directReference": {
-//                     "structField": {
-//                       "field": 1
-//                     }
-//                   },
-//                   "rootReference": {
-//                   }
-//                 }
-//               }
-//             }],
-//             "output_type": {
-//               "i32": {}
-//             }
-//           }
-//         },
-//         ],
-//         "input" : {
-//           "read": {
-//             "base_schema": {
-//               "names": ["A", "B", "C"],
-//                 "struct": {
-//                 "types": [{
-//                   "i32": {}
-//                 }, {
-//                   "i32": {}
-//                 }, {
-//                   "i32": {}
-//                 }]
-//               }
-//             },
-//             "local_files": {
-//               "items": [
-//                 {
-//                   "uri_file": ")" +
-//                                substrait_file_uri +
-//                                R"(",
-//                   "parquet": {}
-//                 }
-//               ]
-//             }
-//           }
-//         }
-//       }
-//     }
-//   }],
-//   "extension_uris": [
-//       {
-//         "extension_uri_anchor": 0,
-//         "uri": ")" + std::string(kSubstraitArithmeticFunctionsUri) +
-//                                R"("
-//       }
-//     ],
-//     "extensions": [
-//       {"extension_function": {
-//         "extension_uri_reference": 0,
-//         "function_anchor": 0,
-//         "name": "add"
-//       }}
-//     ]
-//   })";
+  std::string substrait_json = R"({
+  "relations": [{
+    "rel": {
+      "project": {
+        "expressions": [{
+          "scalarFunction": {
+            "functionReference": 0,
+            "arguments": [{
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 0
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }, {
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 1
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }],
+            "output_type": {
+              "bool": {}
+            }
+          }
+        },
+        ],
+        "input" : {
+          "read": {
+            "base_schema": {
+              "names": ["A", "B", "C"],
+                "struct": {
+                "types": [{
+                  "i32": {}
+                }, {
+                  "i32": {}
+                }, {
+                  "i32": {}
+                }]
+              }
+            },
+            "local_files": {
+              "items": [
+                {
+                  "uri_file": ")" +
+                               substrait_file_uri +
+                               R"(",
+                  "parquet": {}
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }],
+  "extension_uris": [
+      {
+        "extension_uri_anchor": 0,
+        "uri": ")" + std::string(kSubstraitComparisonFunctionsUri) +
+                               R"("
+      }
+    ],
+    "extensions": [
+      {"extension_function": {
+        "extension_uri_reference": 0,
+        "function_anchor": 0,
+        "name": "equal"
+      }}
+    ]
+  })";
 
-//   ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
-//   auto output_schema = schema({field("A", int32()), field("B", int32()),
-//                                field("C", int32()), field("ADD", int32())});
-//   auto expected_table = TableFromJSON(output_schema, {R"([
-//     [1, 1, 10, 2],
-//     [3, 4, 20, 7]
-//   ])"});
-//   EmitValidate(std::move(output_schema), std::move(expected_table), exec_context,
-//   buf)();
-// }
+  ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+  auto output_schema = schema({field("A", int32()), field("B", int32()),
+                               field("C", int32()), field("equal", boolean())});
+  auto expected_table = TableFromJSON(output_schema, {R"([
+    [1, 1, 10, true],
+    [3, 5, 20, false],
+    [4, 1, 30, false],
+    [2, 1, 40, false],
+    [5, 5, 50, true],
+    [2, 2, 60, true]
+  ])"});
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+}
 
-// TEST(Substrait, ProjectRelOnFunctionWithEmit) {
-// #ifdef _WIN32
-//   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
-// #endif
-//   compute::ExecContext exec_context;
-//   auto dummy_schema =
-//       schema({field("A", int32()), field("B", int32()), field("C", int32())});
+TEST(Substrait, ProjectRelOnFunctionWithEmit) {
+#ifdef _WIN32
+  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+#endif
+  compute::ExecContext exec_context;
+  auto dummy_schema =
+      schema({field("A", int32()), field("B", int32()), field("C", int32())});
 
-//   // creating a dummy dataset using a dummy table
-//   auto input_table = TableFromJSON(dummy_schema, {R"([
-//       [1, 1, 10],
-//       [3, 4, 20]
-//   ])"});
+  // creating a dummy dataset using a dummy table
+  auto input_table = TableFromJSON(dummy_schema, {R"([
+      [1, 1, 10],
+      [3, 5, 20],
+      [4, 1, 30],
+      [2, 1, 40],
+      [5, 5, 50],
+      [2, 2, 60]
+  ])"});
 
-//   std::string file_prefix = "serde_project_emit_test";
-//   ASSERT_OK_AND_ASSIGN(auto tempdir, arrow::internal::TemporaryDir::Make(
-//                                          "substrait_project_emit_tempdir"));
+  std::string file_prefix = "serde_project_emit_test";
+  ASSERT_OK_AND_ASSIGN(auto tempdir, arrow::internal::TemporaryDir::Make(
+                                         "substrait_project_emit_tempdir"));
 
-//   TempDataGenerator datagen(input_table, file_prefix, tempdir);
-//   ASSERT_OK(datagen());
-//   std::string substrait_file_uri = "file://" + datagen.data_file_path;
+  TempDataGenerator datagen(input_table, file_prefix, tempdir);
+  ASSERT_OK(datagen());
+  std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
-//   std::string substrait_json = R"({
-//   "relations": [{
-//     "rel": {
-//       "project": {
-//         "common": {
-//           "emit": {
-//             "outputMapping": [0, 2, 3]
-//           }
-//         },
-//         "expressions": [{
-//           "scalarFunction": {
-//             "functionReference": 0,
-//             "arguments": [{
-//               "value": {
-//                 "selection": {
-//                   "directReference": {
-//                     "structField": {
-//                       "field": 0
-//                     }
-//                   },
-//                   "rootReference": {
-//                   }
-//                 }
-//               }
-//             }, {
-//               "value": {
-//                 "selection": {
-//                   "directReference": {
-//                     "structField": {
-//                       "field": 1
-//                     }
-//                   },
-//                   "rootReference": {
-//                   }
-//                 }
-//               }
-//             }]
-//           }
-//         },
-//         ],
-//         "input" : {
-//           "read": {
-//             "base_schema": {
-//               "names": ["A", "B", "C"],
-//                 "struct": {
-//                 "types": [{
-//                   "i32": {}
-//                 }, {
-//                   "i32": {}
-//                 }, {
-//                   "i32": {}
-//                 }]
-//               }
-//             },
-//             "local_files": {
-//               "items": [
-//                 {
-//                   "uri_file": ")" +
-//                                substrait_file_uri +
-//                                R"(",
-//                   "parquet": {}
-//                 }
-//               ]
-//             }
-//           }
-//         }
-//       }
-//     }
-//   }],
-//   "extension_uris": [
-//       {
-//         "extension_uri_anchor": 0,
-//         "uri": ")" + std::string(kSubstraitArithmeticFunctionsUri) +
-//                                R"("
-//       }
-//     ],
-//     "extensions": [
-//       {"extension_function": {
-//         "extension_uri_reference": 0,
-//         "function_anchor": 0,
-//         "name": "add"
-//       }}
-//     ]
-//   })";
+  std::string substrait_json = R"({
+  "relations": [{
+    "rel": {
+      "project": {
+        "common": {
+          "emit": {
+            "outputMapping": [0, 2, 3]
+          }
+        },
+        "expressions": [{
+          "scalarFunction": {
+            "functionReference": 0,
+            "arguments": [{
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 0
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }, {
+              "value": {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 1
+                    }
+                  },
+                  "rootReference": {
+                  }
+                }
+              }
+            }],
+            "output_type": {
+              "bool": {}
+            }
+          }
+        },
+        ],
+        "input" : {
+          "read": {
+            "base_schema": {
+              "names": ["A", "B", "C"],
+                "struct": {
+                "types": [{
+                  "i32": {}
+                }, {
+                  "i32": {}
+                }, {
+                  "i32": {}
+                }]
+              }
+            },
+            "local_files": {
+              "items": [
+                {
+                  "uri_file": ")" +
+                               substrait_file_uri +
+                               R"(",
+                  "parquet": {}
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }],
+  "extension_uris": [
+      {
+        "extension_uri_anchor": 0,
+        "uri": ")" + std::string(kSubstraitComparisonFunctionsUri) +
+                               R"("
+      }
+    ],
+    "extensions": [
+      {"extension_function": {
+        "extension_uri_reference": 0,
+        "function_anchor": 0,
+        "name": "equal"
+      }}
+    ]
+  })";
 
-//   ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
-//   auto output_schema =
-//       schema({field("A", int32()), field("C", int32()), field("add", int32())});
-//   auto expected_table = TableFromJSON(output_schema, {R"([
-//       [1, 10, 2],
-//       [3, 20, 7]
-//   ])"});
-//   EmitValidate(std::move(output_schema), std::move(expected_table), exec_context,
-//   buf)();
-// }
+  ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+  auto output_schema =
+      schema({field("A", int32()), field("C", int32()), field("equal", boolean())});
+  auto expected_table = TableFromJSON(output_schema, {R"([
+      [1, 10, true],
+      [3, 20, false],
+      [4, 30, false],
+      [2, 40, false],
+      [5, 50, true],
+      [2, 60, true]
+  ])"});
+  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+}
 
 TEST(Substrait, ReadRelWithEmit) {
 #ifdef _WIN32
@@ -2828,7 +2828,7 @@ TEST(Substrait, JoinRelWithEmit) {
       [10, 1, 80, 70, 10, 1, 81, 71]
   ])"});
   EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf,
-               std::move(include_columns), true)();
+               std::move(include_columns))();
 }
 
 }  // namespace engine
