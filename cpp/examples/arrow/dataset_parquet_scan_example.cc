@@ -59,15 +59,6 @@ namespace cp = arrow::compute;
 // 2         C          A          2400
 // 3         A          C           500
 
-#define ABORT_ON_FAILURE(expr)                     \
-  do {                                             \
-    arrow::Status status_ = (expr);                \
-    if (!status_.ok()) {                           \
-      std::cerr << status_.message() << std::endl; \
-      abort();                                     \
-    }                                              \
-  } while (0);
-
 struct Configuration {
   // Increase the ds::DataSet by repeating `repeat` times the ds::Dataset.
   size_t repeat = 1;
