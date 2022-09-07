@@ -218,47 +218,33 @@ struct TempDataGenerator {
   std::string data_file_path;
 };
 
-struct EmitValidate {
-  EmitValidate(const std::shared_ptr<Schema> output_schema,
-               const std::shared_ptr<Table> expected_table,
-               compute::ExecContext& exec_context, std::shared_ptr<Buffer>& buf,
-               const std::vector<int>& include_columns = {})
-      : output_schema(output_schema),
-        expected_table(expected_table),
-        exec_context(exec_context),
-        buf(buf),
-        include_columns(include_columns) {}
-  void operator()() {
-    for (auto sp_ext_id_reg :
-         {std::shared_ptr<ExtensionIdRegistry>(), MakeExtensionIdRegistry()}) {
-      ExtensionIdRegistry* ext_id_reg = sp_ext_id_reg.get();
-      ExtensionSet ext_set(ext_id_reg);
-      ASSERT_OK_AND_ASSIGN(auto sink_decls,
-                           DeserializePlans(
-                               *buf, [] { return kNullConsumer; }, ext_id_reg, &ext_set));
-      auto other_declrs = sink_decls[0].inputs[0].get<compute::Declaration>();
-      arrow::AsyncGenerator<util::optional<compute::ExecBatch>> sink_gen;
-      auto sink_node_options = compute::SinkNodeOptions{&sink_gen};
-      auto sink_declaration = compute::Declaration({"sink", sink_node_options, "e"});
-      auto declarations =
-          compute::Declaration::Sequence({*other_declrs, sink_declaration});
-      ASSERT_OK_AND_ASSIGN(auto acero_plan, compute::ExecPlan::Make(&exec_context));
-      ASSERT_OK_AND_ASSIGN(auto output_table,
-                           GetTableFromPlan(acero_plan, declarations, sink_gen,
-                                            exec_context, output_schema));
-      if (!include_columns.empty()) {
-        ASSERT_OK_AND_ASSIGN(output_table, output_table->SelectColumns(include_columns));
-      }
-      ASSERT_OK_AND_ASSIGN(output_table, output_table->CombineChunks());
-      EXPECT_TRUE(expected_table->Equals(*output_table));
-    }
+void CheckRoundTripResult(const std::shared_ptr<Schema> output_schema,
+                          const std::shared_ptr<Table> expected_table,
+                          compute::ExecContext& exec_context,
+                          std::shared_ptr<Buffer>& buf,
+                          const std::vector<int>& include_columns = {},
+                          const ConversionOptions& conversion_options = {}) {
+  std::shared_ptr<ExtensionIdRegistry> sp_ext_id_reg = MakeExtensionIdRegistry();
+  ExtensionIdRegistry* ext_id_reg = sp_ext_id_reg.get();
+  ExtensionSet ext_set(ext_id_reg);
+  ASSERT_OK_AND_ASSIGN(auto sink_decls, DeserializePlans(
+                                            *buf, [] { return kNullConsumer; },
+                                            ext_id_reg, &ext_set, conversion_options));
+  auto other_declrs = sink_decls[0].inputs[0].get<compute::Declaration>();
+  arrow::AsyncGenerator<util::optional<compute::ExecBatch>> sink_gen;
+  auto sink_node_options = compute::SinkNodeOptions{&sink_gen};
+  auto sink_declaration = compute::Declaration({"sink", sink_node_options, "e"});
+  auto declarations = compute::Declaration::Sequence({*other_declrs, sink_declaration});
+  ASSERT_OK_AND_ASSIGN(auto acero_plan, compute::ExecPlan::Make(&exec_context));
+  ASSERT_OK_AND_ASSIGN(
+      auto output_table,
+      GetTableFromPlan(acero_plan, declarations, sink_gen, exec_context, output_schema));
+  if (!include_columns.empty()) {
+    ASSERT_OK_AND_ASSIGN(output_table, output_table->SelectColumns(include_columns));
   }
-  std::shared_ptr<Schema> output_schema;
-  std::shared_ptr<Table> expected_table;
-  compute::ExecContext exec_context;
-  std::shared_ptr<Buffer> buf;
-  const std::vector<int>& include_columns;
-};
+  ASSERT_OK_AND_ASSIGN(output_table, output_table->CombineChunks());
+  EXPECT_TRUE(expected_table->Equals(*output_table));
+}
 
 TEST(Substrait, SupportedTypes) {
   auto ExpectEq = [](util::string_view json, std::shared_ptr<DataType> expected_type) {
@@ -1972,14 +1958,6 @@ TEST(Substrait, ProjectRel) {
       [2, 2, 60]
   ])"});
 
-  std::string file_prefix = "serde_project_test";
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_project_tempdir"));
-
-  TempDataGenerator datagen(input_table, file_prefix, tempdir);
-  ASSERT_OK(datagen());
-  std::string substrait_file_uri = "file://" + datagen.data_file_path;
-
   std::string substrait_json = R"({
   "relations": [{
     "rel": {
@@ -2032,15 +2010,8 @@ TEST(Substrait, ProjectRel) {
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable": {
+                     "names": []
             }
           }
         }
@@ -2074,7 +2045,18 @@ TEST(Substrait, ProjectRel) {
     [5, 5, 50, true],
     [2, 2, 60, true]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+
+  NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+    std::shared_ptr<compute::ExecNodeOptions> options =
+        std::make_shared<compute::TableSourceNodeOptions>(input_table);
+    return compute::Declaration("table_source", {}, options, "mock_source");
+  };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 TEST(Substrait, ProjectRelOnFunctionWithEmit) {
@@ -2094,14 +2076,6 @@ TEST(Substrait, ProjectRelOnFunctionWithEmit) {
       [5, 5, 50],
       [2, 2, 60]
   ])"});
-
-  std::string file_prefix = "serde_project_emit_test";
-  ASSERT_OK_AND_ASSIGN(auto tempdir, arrow::internal::TemporaryDir::Make(
-                                         "substrait_project_emit_tempdir"));
-
-  TempDataGenerator datagen(input_table, file_prefix, tempdir);
-  ASSERT_OK(datagen());
-  std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
   std::string substrait_json = R"({
   "relations": [{
@@ -2160,15 +2134,8 @@ TEST(Substrait, ProjectRelOnFunctionWithEmit) {
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable": {
+                     "names": []
             }
           }
         }
@@ -2202,74 +2169,89 @@ TEST(Substrait, ProjectRelOnFunctionWithEmit) {
       [5, 50, true],
       [2, 60, true]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+  NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+    std::shared_ptr<compute::ExecNodeOptions> options =
+        std::make_shared<compute::TableSourceNodeOptions>(input_table);
+    return compute::Declaration("table_source", {}, options, "mock_source");
+  };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
-TEST(Substrait, ReadRelWithEmit) {
-#ifdef _WIN32
-  GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
-#endif
-  compute::ExecContext exec_context;
-  auto dummy_schema =
-      schema({field("A", int32()), field("B", int32()), field("C", int32())});
+// TEST(Substrait, ReadRelWithEmit) {
+// #ifdef _WIN32
+//   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
+// #endif
+//   compute::ExecContext exec_context;
+//   auto dummy_schema =
+//       schema({field("A", int32()), field("B", int32()), field("C", int32())});
 
-  // creating a dummy dataset using a dummy table
-  auto input_table = TableFromJSON(dummy_schema, {R"([
-      [1, 1, 10],
-      [3, 4, 20]
-  ])"});
+//   // creating a dummy dataset using a dummy table
+//   auto input_table = TableFromJSON(dummy_schema, {R"([
+//       [1, 1, 10],
+//       [3, 4, 20]
+//   ])"});
 
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_read_tempdir"));
-  std::string file_prefix = "serde_read_emit_test";
+//   ASSERT_OK_AND_ASSIGN(auto tempdir,
+//                        arrow::internal::TemporaryDir::Make("substrait_read_tempdir"));
+//   std::string file_prefix = "serde_read_emit_test";
 
-  TempDataGenerator datagen(input_table, file_prefix, tempdir);
-  ASSERT_OK(datagen());
-  std::string substrait_file_uri = "file://" + datagen.data_file_path;
+//   TempDataGenerator datagen(input_table, file_prefix, tempdir);
+//   ASSERT_OK(datagen());
+//   std::string substrait_file_uri = "file://" + datagen.data_file_path;
 
-  std::string substrait_json = R"({
-  "relations": [{
-    "rel": {
-      "read": {
-        "common": {
-          "emit": {
-            "outputMapping": [1, 2]
-          }
-        },
-        "base_schema": {
-          "names": ["A", "B", "C"],
-            "struct": {
-            "types": [{
-              "i32": {}
-            }, {
-              "i32": {}
-            }, {
-              "i32": {}
-            }]
-          }
-        },
-        "local_files": {
-          "items": [
-            {
-              "uri_file": ")" + substrait_file_uri +
-                               R"(",
-              "parquet": {}
-            }
-          ]
-        }
-      }
-    }
-  }],
-  })";
+//   std::string substrait_json = R"({
+//   "relations": [{
+//     "rel": {
+//       "read": {
+//         "common": {
+//           "emit": {
+//             "outputMapping": [1, 2]
+//           }
+//         },
+//         "base_schema": {
+//           "names": ["A", "B", "C"],
+//             "struct": {
+//             "types": [{
+//               "i32": {}
+//             }, {
+//               "i32": {}
+//             }, {
+//               "i32": {}
+//             }]
+//           }
+//         },
+//         namedTable: {
+//           "names" : []
+//         }
+//       }
+//     }
+//   }],
+//   })";
 
-  ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
-  auto output_schema = schema({field("B", int32()), field("C", int32())});
-  auto expected_table = TableFromJSON(output_schema, {R"([
-      [1, 10],
-      [4, 20]
-  ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
-}
+//   ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+//   auto output_schema = schema({field("B", int32()), field("C", int32())});
+//   auto expected_table = TableFromJSON(output_schema, {R"([
+//       [1, 10],
+//       [4, 20]
+//   ])"});
+//   NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+//     std::shared_ptr<compute::ExecNodeOptions> options =
+//         std::make_shared<compute::TableSourceNodeOptions>(input_table);
+//     return compute::Declaration("table_source", {}, options, "mock_source");
+//   };
+
+//   ConversionOptions conversion_options;
+//   conversion_options.named_table_provider = std::move(table_provider);
+
+//   CheckRoundTripResult(std::move(output_schema), std::move(expected_table),
+//   exec_context,
+//                        buf, {}, conversion_options);
+// }
 
 TEST(Substrait, FilterRelWithEmit) {
 #ifdef _WIN32
@@ -2356,15 +2338,8 @@ TEST(Substrait, FilterRelWithEmit) {
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable": {
+              "names" : []
             }
           }
         }
@@ -2395,7 +2370,17 @@ TEST(Substrait, FilterRelWithEmit) {
       [6, 2],
       [7, 1]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+  NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+    std::shared_ptr<compute::ExecNodeOptions> options =
+        std::make_shared<compute::TableSourceNodeOptions>(input_table);
+    return compute::Declaration("table_source", {}, options, "mock_source");
+  };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 TEST(Substrait, JoinRelEndToEnd) {
@@ -2642,37 +2627,22 @@ TEST(Substrait, JoinRelWithEmit) {
   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
 #endif
   compute::ExecContext exec_context;
-  auto left_schema = schema({field("A", int32()), field("B", int32()),
-                             field("C", int32()), field("D", int32())});
+  auto left_schema = schema({field("A", int32()), field("B", int32())});
 
-  auto right_schema = schema({field("X", int32()), field("Y", int32()),
-                              field("Z", int32()), field("W", int32())});
+  auto right_schema = schema({field("X", int32()), field("Y", int32())});
 
   // creating a dummy dataset using a dummy table
   auto left_table = TableFromJSON(left_schema, {R"([
-      [10, 1, 80, 70],
-      [20, 2, 70, 60],
-      [30, 3, 30, 50]
+      [10, 1],
+      [20, 2],
+      [30, 3]
   ])"});
 
   auto right_table = TableFromJSON(right_schema, {R"([
-      [10, 1, 81, 71],
-      [80, 2, 71, 61],
-      [31, 3, 31, 51]
+      [10, 11],
+      [80, 21],
+      [31, 31]
   ])"});
-
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_join_tempdir"));
-  std::string left_file_prefix = "serde_join_left_emit_test";
-  std::string right_file_prefix = "serde_join_right_emit_test";
-
-  TempDataGenerator datagen_left(left_table, left_file_prefix, tempdir);
-  ASSERT_OK(datagen_left());
-  std::string substrait_left_file_uri = "file://" + datagen_left.data_file_path;
-
-  TempDataGenerator datagen_right(right_table, right_file_prefix, tempdir);
-  ASSERT_OK(datagen_right());
-  std::string substrait_right_file_uri = "file://" + datagen_right.data_file_path;
 
   std::string substrait_json = R"({
   "relations": [{
@@ -2681,56 +2651,34 @@ TEST(Substrait, JoinRelWithEmit) {
         "left": {
           "read": {
             "base_schema": {
-              "names": ["A", "B", "C", "D"],
+              "names": ["A", "B"],
               "struct": {
                 "types": [{
-                  "i32": {}
-                }, {
-                  "i32": {}
-                }, {
                   "i32": {}
                 }, {
                   "i32": {}
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_left_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable": {
+              "names" : ["left"]
             }
           }
         },
         "right": {
           "read": {
             "base_schema": {
-              "names": ["X", "Y", "Z", "W"],
+              "names": ["X", "Y"],
               "struct": {
                 "types": [{
-                  "i32": {}
-                }, {
-                  "i32": {}
-                }, {
                   "i32": {}
                 }, {
                   "i32": {}
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_right_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable": {
+              "names" : ["right"]
             }
           }
         },
@@ -2788,42 +2736,40 @@ TEST(Substrait, JoinRelWithEmit) {
   })";
 
   ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+
+  // include these columns for comparison
   auto output_schema = schema({
       field("A", int32()),
       field("B", int32()),
-      field("C", int32()),
-      field("D", int32()),
-      field("__fragment_index_l", int32()),
-      field("__batch_index_l", int32()),
-      field("__last_in_fragment_l", boolean()),
-      field("__filename_l", utf8()),
       field("X", int32()),
       field("Y", int32()),
-      field("Z", int32()),
-      field("W", int32()),
-      field("__fragment_index_r", int32()),
-      field("__batch_index_r", int32()),
-      field("__last_in_fragment_r", boolean()),
-      field("__filename_r", utf8()),
   });
 
-  // include these columns for comparison
-  std::vector<int> include_columns{0, 1, 2, 3, 8, 9, 10, 11};
-  auto compared_output_schema = schema({
-      field("A", int32()),
-      field("B", int32()),
-      field("C", int32()),
-      field("D", int32()),
-      field("X", int32()),
-      field("Y", int32()),
-      field("Z", int32()),
-      field("W", int32()),
-  });
-  auto expected_table = TableFromJSON(std::move(compared_output_schema), {R"([
-      [10, 1, 80, 70, 10, 1, 81, 71]
+  auto expected_table = TableFromJSON(std::move(output_schema), {R"([
+      [10, 1, 10, 11]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf,
-               std::move(include_columns))();
+
+  NamedTableProvider table_provider =
+      [left_table, right_table](const std::vector<std::string>& names) {
+        std::shared_ptr<Table> output_table;
+        for (const auto& name : names) {
+          if (name == "left") {
+            output_table = left_table;
+          }
+          if (name == "right") {
+            output_table = right_table;
+          }
+        }
+        std::shared_ptr<compute::ExecNodeOptions> options =
+            std::make_shared<compute::TableSourceNodeOptions>(std::move(output_table));
+        return compute::Declaration("table_source", {}, options, "mock_source");
+      };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 TEST(Substrait, JoinRelWithEmit) {
@@ -2831,37 +2777,22 @@ TEST(Substrait, JoinRelWithEmit) {
   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
 #endif
   compute::ExecContext exec_context;
-  auto left_schema = schema({field("A", int32()), field("B", int32()),
-                             field("C", int32()), field("D", int32())});
+  auto left_schema = schema({field("A", int32()), field("B", int32())});
 
-  auto right_schema = schema({field("X", int32()), field("Y", int32()),
-                              field("Z", int32()), field("W", int32())});
+  auto right_schema = schema({field("X", int32()), field("Y", int32())});
 
   // creating a dummy dataset using a dummy table
   auto left_table = TableFromJSON(left_schema, {R"([
-      [10, 1, 80, 70],
-      [20, 2, 70, 60],
-      [30, 3, 30, 50]
+      [10, 1],
+      [20, 2],
+      [30, 3]
   ])"});
 
   auto right_table = TableFromJSON(right_schema, {R"([
-      [10, 1, 81, 71],
-      [80, 2, 71, 61],
-      [31, 3, 31, 51]
+      [10, 11],
+      [80, 21],
+      [31, 31]
   ])"});
-
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_join_tempdir"));
-  std::string left_file_prefix = "serde_join_left_emit_test";
-  std::string right_file_prefix = "serde_join_right_emit_test";
-
-  TempDataGenerator datagen_left(left_table, left_file_prefix, tempdir);
-  ASSERT_OK(datagen_left());
-  std::string substrait_left_file_uri = "file://" + datagen_left.data_file_path;
-
-  TempDataGenerator datagen_right(right_table, right_file_prefix, tempdir);
-  ASSERT_OK(datagen_right());
-  std::string substrait_right_file_uri = "file://" + datagen_right.data_file_path;
 
   std::string substrait_json = R"({
   "relations": [{
@@ -2869,62 +2800,40 @@ TEST(Substrait, JoinRelWithEmit) {
       "join": {
         "common": {
           "emit": {
-            "outputMapping": [0, 1, 2, 3, 8, 9, 10, 11]
+            "outputMapping": [0, 1, 3]
           }
         },
         "left": {
           "read": {
             "base_schema": {
-              "names": ["A", "B", "C", "D"],
+              "names": ["A", "B"],
               "struct": {
                 "types": [{
-                  "i32": {}
-                }, {
-                  "i32": {}
-                }, {
                   "i32": {}
                 }, {
                   "i32": {}
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_left_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable" : {
+              "names" : ["left"]
             }
           }
         },
         "right": {
           "read": {
             "base_schema": {
-              "names": ["X", "Y", "Z", "W"],
+              "names": ["X", "Y"],
               "struct": {
                 "types": [{
-                  "i32": {}
-                }, {
-                  "i32": {}
-                }, {
                   "i32": {}
                 }, {
                   "i32": {}
                 }]
               }
             },
-            "local_files": {
-              "items": [
-                {
-                  "uri_file": ")" +
-                               substrait_right_file_uri +
-                               R"(",
-                  "parquet": {}
-                }
-              ]
+            "namedTable" : {
+              "names" : ["right"]
             }
           }
         },
@@ -2985,18 +2894,34 @@ TEST(Substrait, JoinRelWithEmit) {
   auto output_schema = schema({
       field("A", int32()),
       field("B", int32()),
-      field("C", int32()),
-      field("D", int32()),
-      field("X", int32()),
       field("Y", int32()),
-      field("Z", int32()),
-      field("W", int32()),
   });
 
   auto expected_table = TableFromJSON(std::move(output_schema), {R"([
-      [10, 1, 80, 70, 10, 1, 81, 71]
+      [10, 1, 11]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+
+  NamedTableProvider table_provider =
+      [left_table, right_table](const std::vector<std::string>& names) {
+        std::shared_ptr<Table> output_table;
+        for (const auto& name : names) {
+          if (name == "left") {
+            output_table = left_table;
+          }
+          if (name == "right") {
+            output_table = right_table;
+          }
+        }
+        std::shared_ptr<compute::ExecNodeOptions> options =
+            std::make_shared<compute::TableSourceNodeOptions>(std::move(output_table));
+        return compute::Declaration("table_source", {}, options, "mock_source");
+      };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 TEST(Substrait, AggregateRel) {
@@ -3018,13 +2943,6 @@ TEST(Substrait, AggregateRel) {
       [30, 7, 30]
   ])"});
 
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_agg_tempdir"));
-  std::string file_prefix = "serde_agg_emit_test";
-
-  TempDataGenerator datagen(input_table, file_prefix, tempdir);
-  ASSERT_OK(datagen());
-  std::string substrait_file_uri = "file://" + datagen.data_file_path;
   std::string substrait_json = R"({
     "relations": [{
       "rel": {
@@ -3043,15 +2961,8 @@ TEST(Substrait, AggregateRel) {
                   }]
                 }
               },
-              "local_files": {
-                "items": [
-                  {
-                    "uri_file": ")" +
-                               substrait_file_uri +
-                               R"(",
-                    "parquet": {}
-                  }
-                ]
+              "namedTable" : {
+                "names": []
               }
             }
           },
@@ -3112,7 +3023,18 @@ TEST(Substrait, AggregateRel) {
       [60, 30],
       [60, 40]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+
+  NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+    std::shared_ptr<compute::ExecNodeOptions> options =
+        std::make_shared<compute::TableSourceNodeOptions>(input_table);
+    return compute::Declaration("table_source", {}, options, "mock_source");
+  };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 TEST(Substrait, AggregateRelEmit) {
@@ -3134,13 +3056,6 @@ TEST(Substrait, AggregateRelEmit) {
       [30, 7, 30]
   ])"});
 
-  ASSERT_OK_AND_ASSIGN(auto tempdir,
-                       arrow::internal::TemporaryDir::Make("substrait_agg_tempdir"));
-  std::string file_prefix = "serde_agg_emit_test";
-
-  TempDataGenerator datagen(input_table, file_prefix, tempdir);
-  ASSERT_OK(datagen());
-  std::string substrait_file_uri = "file://" + datagen.data_file_path;
   // TODO: fixme https://issues.apache.org/jira/browse/ARROW-17484
   std::string substrait_json = R"({
     "relations": [{
@@ -3165,15 +3080,8 @@ TEST(Substrait, AggregateRelEmit) {
                   }]
                 }
               },
-              "local_files": {
-                "items": [
-                  {
-                    "uri_file": ")" +
-                               substrait_file_uri +
-                               R"(",
-                    "parquet": {}
-                  }
-                ]
+              "namedTable" : {
+                "names" : []
               }
             }
           },
@@ -3234,7 +3142,18 @@ TEST(Substrait, AggregateRelEmit) {
       [60],
       [60]
   ])"});
-  EmitValidate(std::move(output_schema), std::move(expected_table), exec_context, buf)();
+
+  NamedTableProvider table_provider = [input_table](const std::vector<std::string>&) {
+    std::shared_ptr<compute::ExecNodeOptions> options =
+        std::make_shared<compute::TableSourceNodeOptions>(input_table);
+    return compute::Declaration("table_source", {}, options, "mock_source");
+  };
+
+  ConversionOptions conversion_options;
+  conversion_options.named_table_provider = std::move(table_provider);
+
+  CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
+                       buf, {}, conversion_options);
 }
 
 }  // namespace engine
