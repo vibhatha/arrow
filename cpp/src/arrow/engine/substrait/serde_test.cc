@@ -2375,7 +2375,6 @@ TEST(Substrait, FilterRelWithEmit) {
                        buf, {}, conversion_options);
 }
 
-TEST(Substrait, JoinRelEndToEnd) {
 TEST(Substrait, BasicPlanRoundTripping) {
 #ifdef _WIN32
   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
@@ -2614,7 +2613,7 @@ TEST(Substrait, BasicPlanRoundTrippingEndToEnd) {
   EXPECT_TRUE(expected_table->Equals(*rnd_trp_table));
 }
 
-TEST(Substrait, JoinRelWithEmit) {
+TEST(Substrait, JoinRelEndToEnd) {
 #ifdef _WIN32
   GTEST_SKIP() << "ARROW-16392: Substrait File URI not supported for Windows";
 #endif
