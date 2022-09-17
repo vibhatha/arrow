@@ -540,6 +540,51 @@ Result<DeclarationInfo> FromProto(const substrait::Rel& rel, const ExtensionSet&
       return ProcessEmit(std::move(aggregate), std::move(aggregate_declaration),
                          std::move(aggregate_schema));
     }
+    case substrait::Rel::RelTypeCase::kSet: {
+      const auto& set = rel.set();
+      RETURN_NOT_OK(CheckRelCommon(set));
+
+      if (set.inputs_size() < 2) {
+        return Status::Invalid(
+            "substrait::SetRel with inadequate number of input relations, ",
+            set.inputs_size());
+      }
+      substrait::SetRel_SetOp op = set.op();
+      // Note: at the moment Acero only supports UNION_ALL operation
+      switch (op) {
+        case substrait::SetRel::SET_OP_UNSPECIFIED:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_MINUS_PRIMARY:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_MINUS_MULTISET:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_INTERSECTION_PRIMARY:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_INTERSECTION_MULTISET:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_UNION_DISTINCT:
+          return Status::NotImplemented("NotImplemented union type");
+        case substrait::SetRel::SET_OP_UNION_ALL:
+          break;
+        default:
+          return Status::Invalid("Unsupported union type");
+      }
+      const int input_size = set.inputs_size();
+      std::shared_ptr<Schema> union_schema;
+      compute::Declaration union_declr{"union", compute::ExecNodeOptions{}};
+      for (int input_id = 0; input_id < input_size; input_id++) {
+        ARROW_ASSIGN_OR_RAISE(
+            auto input, FromProto(set.inputs(input_id), ext_set, conversion_options));
+        if (union_schema == nullptr) {
+          // for union operation the output schema should be the schema of any input
+          union_schema = input.output_schema;
+        }
+        union_declr.inputs.emplace_back(std::move(input.declaration));
+      }
+      DeclarationInfo union_declr_info{std::move(union_declr), union_schema};
+      return ProcessEmit(std::move(set), std::move(union_declr_info),
+                         std::move(union_schema));
+    }
 
     default:
       break;

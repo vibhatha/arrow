@@ -2406,6 +2406,11 @@ TEST(Substrait, ReadRelWithEmit) {
   })";
 
   ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", substrait_json));
+  // TODO REMOVE START
+  ASSERT_OK_AND_ASSIGN(auto json, internal::SubstraitToJSON("Plan", *buf));
+
+  std::cout << json << std::endl;
+  // TODO REMOVE END
   auto output_schema = schema({field("B", int32()), field("C", int32())});
   auto expected_table = TableFromJSON(output_schema, {R"([
       [1, 10],
@@ -3079,6 +3084,89 @@ TEST(Substrait, AggregateRelEmit) {
 
   CheckRoundTripResult(std::move(output_schema), std::move(expected_table), exec_context,
                        buf, {}, conversion_options);
+}
+
+TEST(Substrait, SetRel) {
+  // ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", R"({
+  //   "relations": [{
+  //     "rel": {
+  //       "set": {
+  //         "inputs": [
+  //           {
+  //             "read": {
+  //               "base_schema": {
+  //                 "names": ["A", "B", "C"],
+  //                   "struct": {
+  //                   "types": [{
+  //                     "i32": {}
+  //                   }, {
+  //                     "i32": {}
+  //                   }, {
+  //                     "i32": {}
+  //                   }]
+  //                 }
+  //               },
+  //               "namedTable": {
+  //                 "names" : ["A"]
+  //               }
+  //             }
+  //           },
+  //           {
+  //             "read": {
+  //               "base_schema": {
+  //                 "names": ["A", "B", "C"],
+  //                   "struct": {
+  //                   "types": [{
+  //                     "i32": {}
+  //                   }, {
+  //                     "i32": {}
+  //                   }, {
+  //                     "i32": {}
+  //                   }]
+  //                 }
+  //               },
+  //               "namedTable": {
+  //                 "names" : ["A"]
+  //               }
+  //             }
+  //           }
+  //         ],
+  //         "op": "SET_OP_UNION_DISTINCT"
+  //       }
+  //     }
+  //   }],
+  // })"));
+  ASSERT_OK_AND_ASSIGN(auto buf, internal::SubstraitFromJSON("Plan", R"({
+    "relations": [{
+      "rel": {
+        "read": {
+        }
+      }
+    }],
+  })"));
+
+  ASSERT_OK_AND_ASSIGN(auto json, internal::SubstraitToJSON("Plan", *buf));
+
+  std::cout << json << std::endl;
+  ExtensionSet ext_set;
+  ASSERT_OK_AND_ASSIGN(auto rel, DeserializeRelation(*buf, ext_set));
+
+  // converting a ReadRel produces a scan Declaration
+  // ASSERT_EQ(rel.factory_name, "scan");
+  // const auto& scan_node_options =
+  //     checked_cast<const dataset::ScanNodeOptions&>(*rel.options);
+
+  // // filter on the boolean field (#1)
+  // EXPECT_EQ(scan_node_options.scan_options->filter, compute::field_ref(1));
+
+  // // dataset is a FileSystemDataset in parquet format with the specified schema
+  // ASSERT_EQ(scan_node_options.dataset->type_name(), "filesystem");
+  // const auto& dataset =
+  //     checked_cast<const dataset::FileSystemDataset&>(*scan_node_options.dataset);
+  // EXPECT_THAT(dataset.files(),
+  //             UnorderedElementsAre("/tmp/dat1.parquet", "/tmp/dat2.parquet"));
+  // EXPECT_EQ(dataset.format()->type_name(), "parquet");
+  // EXPECT_EQ(*dataset.schema(), Schema({field("i", int64()), field("b", boolean())}));
 }
 
 }  // namespace engine
