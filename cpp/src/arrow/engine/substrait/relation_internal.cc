@@ -34,6 +34,8 @@
 #include "arrow/util/string.h"
 #include "arrow/util/uri.h"
 
+#include <numeric>
+
 namespace arrow {
 
 using internal::checked_cast;
@@ -559,9 +561,36 @@ Result<std::shared_ptr<Schema>> ExtractSchemaToBind(const compute::Declaration& 
   if (declr.factory_name == "scan") {
     const auto& opts = checked_cast<const dataset::ScanNodeOptions&>(*(declr.options));
     bind_schema = opts.dataset->schema();
-  } else if (declr.factory_name == "filter" || declr.factory_name == "project") {
+  } else if (declr.factory_name == "filter") {
     auto input_declr = std::get<compute::Declaration>(declr.inputs[0]);
     ARROW_ASSIGN_OR_RAISE(bind_schema, ExtractSchemaToBind(input_declr));
+  } else if (declr.factory_name == "project") {
+    auto input_declr = std::get<compute::Declaration>(declr.inputs[0]);
+    ARROW_ASSIGN_OR_RAISE(auto input_schema, ExtractSchemaToBind(input_declr));
+    const int num_fields_before_proj = input_schema->num_fields();
+    const auto& opts = checked_cast<const compute::ProjectNodeOptions&>(*(declr.options));
+    const auto& exprs = opts.expressions;
+    int i = 0;
+    bind_schema = input_schema;
+    for (const auto& expr : exprs) {
+      std::shared_ptr<Field> project_field;
+      auto bound_expr = expr.Bind(*input_schema);
+      if (auto* expr_call = bound_expr->call()) {
+        project_field = field(expr_call->function_name,
+                              expr_call->kernel->signature->out_type().type());
+      } else if (auto* field_ref = bound_expr->field_ref()) {
+        ARROW_ASSIGN_OR_RAISE(FieldPath field_path,
+                              field_ref->FindOne(*input_schema));
+        ARROW_ASSIGN_OR_RAISE(project_field, field_path.Get(*input_schema));
+      } else if (auto* literal = bound_expr->literal()) {
+        project_field =
+            field("field_" + std::to_string(num_fields_before_proj + i), literal->type());
+      }
+      ARROW_ASSIGN_OR_RAISE(
+        bind_schema,
+        bind_schema->AddField(num_fields_before_proj + static_cast<int>(exprs.size()) - 1, std::move(project_field)));
+      i++;
+    }
   } else if (declr.factory_name == "sink") {
     // Note that the sink has no output_schema
     return bind_schema;
@@ -570,6 +599,16 @@ Result<std::shared_ptr<Schema>> ExtractSchemaToBind(const compute::Declaration& 
                            declr.factory_name);
   }
   return bind_schema;
+}
+
+Result<std::unique_ptr<substrait::RelCommon>> GetRelCommonEmit(std::vector<int>& emit_fields) {
+  auto rel_common = make_unique<substrait::RelCommon>();
+  auto rel_common_emit = make_unique<substrait::RelCommon::Emit>();
+  for(const auto& emit_field : emit_fields) {
+    rel_common_emit->add_output_mapping(emit_field);
+  }
+  rel_common->set_allocated_emit(rel_common_emit.release());
+  return std::move(rel_common);
 }
 
 Result<std::unique_ptr<substrait::ReadRel>> ScanRelationConverter(
@@ -642,6 +681,7 @@ Result<std::unique_ptr<substrait::FilterRel>> FilterRelationConverter(
   ARROW_ASSIGN_OR_RAISE(auto subs_expr,
                         ToProto(bound_expression, ext_set, conversion_options));
   filter_rel->set_allocated_condition(subs_expr.release());
+
   return std::move(filter_rel);
 }
 
@@ -651,7 +691,7 @@ Result<std::unique_ptr<substrait::ProjectRel>> ProjectRelationConverter(
   auto project_rel = make_unique<substrait::ProjectRel>();
   const auto& project_node_options =
       checked_cast<const compute::ProjectNodeOptions&>(*declaration.options);
-
+  const auto& expressions = project_node_options.expressions;
   if (declaration.inputs.size() == 0) {
     return Status::Invalid("Project node doesn't have an input.");
   }
@@ -662,7 +702,7 @@ Result<std::unique_ptr<substrait::ProjectRel>> ProjectRelationConverter(
       auto input_rel,
       ToProto(std::get<compute::Declaration>(declr_input), ext_set, conversion_options));
 
-  for (const auto& expr : project_node_options.expressions) {
+  for (const auto& expr : expressions) {
     compute::Expression bound_expression;
     if (!expr.IsBound()) {
       ARROW_ASSIGN_OR_RAISE(bound_expression, expr.Bind(*schema));
@@ -672,6 +712,13 @@ Result<std::unique_ptr<substrait::ProjectRel>> ProjectRelationConverter(
     project_rel->mutable_expressions()->AddAllocated(subs_expr.release());
   }
   project_rel->set_allocated_input(input_rel.release());
+  
+  // set an emit to only output the result of the expressions passed in
+  std::vector<int> emit_fields(expressions.size());
+  std::iota(emit_fields.begin(), emit_fields.end(), schema->num_fields());
+  ARROW_ASSIGN_OR_RAISE(auto rel_common, GetRelCommonEmit(emit_fields));
+  project_rel->set_allocated_common(rel_common.release());
+  
   return std::move(project_rel);
 }
 

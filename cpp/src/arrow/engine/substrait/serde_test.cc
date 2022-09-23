@@ -2171,46 +2171,27 @@ TEST(Substrait, FilterProjectPlanRoundTripping) {
   scan_options->projection = compute::project({}, {});
   compute::Expression project_fp_expr = compute::call(
       "add", {compute::field_ref(FieldPath({1})), compute::field_ref(FieldPath({2}))});
-  // Acero only outputs the expressions mentioned in the projection but Substrait
-  // outputs existing columns plus the expression.
-  // For validation purpose, a project expression with expected projection
-  // field plus existing fields is created for Acero.
-  // And for Substrait just the project expression with expected projection.
-  std::vector<compute::Expression> acero_project_fp_exprs = {
-      compute::field_ref(FieldPath({0})), compute::field_ref(FieldPath({1})),
-      compute::field_ref(FieldPath({2})), project_fp_expr};
-  std::vector<compute::Expression> substrait_project_fp_exprs = {project_fp_expr};
+  std::vector<compute::Expression> project_exprs = {project_fp_expr};
 
-  auto acero_declarations = compute::Declaration::Sequence(
+  auto declarations = compute::Declaration::Sequence(
       {compute::Declaration(
            {"scan", dataset::ScanNodeOptions{dataset, scan_options}, "s"}),
        compute::Declaration(
-           {"project", compute::ProjectNodeOptions{acero_project_fp_exprs}, "p"})});
+           {"project", compute::ProjectNodeOptions{project_exprs}, "p"})});
 
   // adding the project expression field to schema
-  ASSERT_OK_AND_ASSIGN(auto project_schema,
-                       dummy_schema->AddField(dummy_schema->num_fields(),
-                                              field("add(shared,distinct)", int32())));
+  auto project_schema = schema({field("add(shared,distinct)", int32())});
 
   ASSERT_OK_AND_ASSIGN(
       auto expected_table,
-      GetTableFromPlan(acero_declarations, exec_context, project_schema));
+      GetTableFromPlan(declarations, exec_context, project_schema));
 
   std::shared_ptr<ExtensionIdRegistry> sp_ext_id_reg = MakeExtensionIdRegistry();
   ExtensionIdRegistry* ext_id_reg = sp_ext_id_reg.get();
   ExtensionSet ext_set(ext_id_reg);
 
-  // declaration which Substrait would expect since the idea is to do the projection
-  // which would produce an equivalent result to the declaration created for Acero with
-  // additional project fields.
-  auto substrait_declarations = compute::Declaration::Sequence(
-      {compute::Declaration(
-           {"scan", dataset::ScanNodeOptions{dataset, scan_options}, "s"}),
-       compute::Declaration(
-           {"project", compute::ProjectNodeOptions{substrait_project_fp_exprs}, "p"})});
-
   ASSERT_OK_AND_ASSIGN(auto serialized_plan,
-                       SerializePlan(substrait_declarations, &ext_set));
+                       SerializePlan(declarations, &ext_set));
 
   ASSERT_OK_AND_ASSIGN(
       auto sink_decls,
@@ -2220,14 +2201,13 @@ TEST(Substrait, FilterProjectPlanRoundTripping) {
   const auto& roundtripped_project =
       std::get<compute::Declaration>(sink_decls[0].inputs[0]);
   // assert project declaration
-  // Note: the provided expressions for Substrait declaration only contains one
-  // expression, but substrait produces expressions for the existing number of fields plus
-  // provided expression. Since the output expressions from the deserialized relation
-  // contains fields which weren't used in the project expression.
-  AssertProjectRelation(roundtripped_project, acero_project_fp_exprs, project_schema);
+  AssertProjectRelation(roundtripped_project, {compute::field_ref(FieldPath({4}))}, project_schema);
+  // assert emit project declaration
+  const auto& roundtripped_emit_project =
+      std::get<compute::Declaration>(roundtripped_project.inputs[0]);
   // assert scan declaration
   const auto& roundtripped_scan =
-      std::get<compute::Declaration>(roundtripped_project.inputs[0]);
+      std::get<compute::Declaration>(roundtripped_emit_project.inputs[0]);
   AssertScanRelation(roundtripped_scan, dataset, dummy_schema);
   // assert results
   AssertPlanExecutionResult(expected_table, roundtripped_project, project_schema,
