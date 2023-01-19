@@ -32,6 +32,7 @@
 #include "arrow/dataset/type_fwd.h"
 #include "arrow/dataset/visibility.h"
 #include "arrow/filesystem/filesystem.h"
+#include "arrow/filesystem/localfs.h"
 #include "arrow/io/file.h"
 #include "arrow/util/compression.h"
 
@@ -389,13 +390,13 @@ struct ARROW_DS_EXPORT FileSystemDatasetWriteOptions {
   std::shared_ptr<FileWriteOptions> file_write_options;
 
   /// FileSystem into which a dataset will be written.
-  std::shared_ptr<fs::FileSystem> filesystem;
+  std::shared_ptr<fs::FileSystem> filesystem = std::make_shared<arrow::fs::LocalFileSystem>();
 
   /// Root directory into which the dataset will be written.
   std::string base_dir;
 
   /// Partitioning used to generate fragment paths.
-  std::shared_ptr<Partitioning> partitioning;
+  std::shared_ptr<Partitioning> partitioning = Partitioning::Default();
 
   /// Maximum number of partitions any batch may be written into, default is 1K.
   int max_partitions = 1024;
