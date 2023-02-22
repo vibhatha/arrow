@@ -5122,3 +5122,32 @@ def test_dataset_sort_by(tempdir, dstype):
     sorted_tab_dict = sorted_tab.to_table().to_pydict()
     assert sorted_tab_dict["a"] == [5, 7, 7, 35]
     assert sorted_tab_dict["b"] == ["foo", "car", "bar", "foobar"]
+    
+def test_dataset_default_partitioning(tmpdir):
+    from pyarrow import dataset as ds
+
+    path = tmpdir / "slash-writer"
+
+    dt_table = pa.Table.from_arrays([
+        pa.array([1, 2, 3, 4, 5], pa.int32()),
+        pa.array(["x", "y",
+                  "x", "z",
+                  "x"], pa.utf8())], ["exp_id", "exp_meta"])
+
+    ds.write_dataset(
+        data=dt_table,
+        base_dir=path,
+        format='ipc',
+        partitioning=['exp_meta'],
+        partitioning_flavor='hive',
+    )
+
+    read_table = ds.dataset(
+        source=path,
+        format='ipc',
+        schema=pa.schema([("exp_id", pa.int32()), ("exp_meta", pa.utf8())]),
+        partitioning='hive').to_table().combine_chunks()
+    
+    print(read_table.sort_by("exp_id"))
+
+    assert dt_table == read_table.sort_by("exp_id")
