@@ -458,6 +458,7 @@ TEST_P(TestParquetFileFormatScan, ScanRecordBatchReaderWithDuplicateColumnError)
   TestScanWithDuplicateColumnError();
 }
 TEST_P(TestParquetFileFormatScan, ScanWithPushdownNulls) { TestScanWithPushdownNulls(); }
+TEST_P(TestParquetFileFormatScan, ScanWithFieldPathFilter) { TestScanWithFieldPathFilter(); }
 TEST_P(TestParquetFileFormatScan, ScanRecordBatchReaderDictEncoded) {
   auto reader = GetRecordBatchReader(schema({field("utf8", utf8())}));
   auto source = GetFileSource(reader.get());
@@ -693,6 +694,8 @@ TEST(TestParquetStatistics, NullMax) {
       ParquetFileFragment::EvaluateStatisticsAsExpression(*field, *statistics);
   EXPECT_EQ(stat_expression->ToString(), "(x >= 1)");
 }
+
+
 
 }  // namespace dataset
 }  // namespace arrow

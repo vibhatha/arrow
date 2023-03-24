@@ -147,11 +147,13 @@ void AddColumnIndices(const SchemaField& schema_field,
 }
 
 Status ResolveOneFieldRef(
-    const SchemaManifest& manifest, const FieldRef& field_ref,
+    const SchemaManifest& manifest, const std::shared_ptr<Schema>& dataset_schema,
+    const FieldRef& field_ref,
     const std::unordered_map<std::string, const SchemaField*>& field_lookup,
     const std::unordered_set<std::string>& duplicate_fields,
     std::vector<int>* columns_selection) {
-  if (const std::string* name = field_ref.name()) {
+  
+  auto resolve_field_ref = [&](const std::string* name) -> Status {
     auto it = field_lookup.find(*name);
     if (it != field_lookup.end()) {
       AddColumnIndices(*it->second, columns_selection);
@@ -162,6 +164,19 @@ Status ResolveOneFieldRef(
     }
     // "Virtual" column: field is not in file but is in the ScanOptions.
     // Ignore it here, as projection will pad the batch with a null column.
+    return Status::OK();
+  };
+
+  if (const std::string* name = field_ref.name()) {
+    return resolve_field_ref(name);
+  } else if (const FieldPath* path = field_ref.field_path()) {
+    auto indices = path->indices();
+    if (indices.size() > 1) {
+      return Status::NotImplemented("Provided FieldRef ", field_ref.ToString(),
+                                    ", Nested FieldPaths are not supported!");
+    }
+    auto col_name = dataset_schema->field(indices[0])->name();
+    RETURN_NOT_OK(resolve_field_ref(&col_name));
     return Status::OK();
   }
 
@@ -249,7 +264,7 @@ Result<std::vector<int>> InferColumnProjection(const parquet::arrow::FileReader&
 
   std::vector<int> columns_selection;
   for (const auto& ref : field_refs) {
-    RETURN_NOT_OK(ResolveOneFieldRef(manifest, ref, field_lookup, duplicate_fields,
+    RETURN_NOT_OK(ResolveOneFieldRef(manifest, options.dataset_schema, ref, field_lookup, duplicate_fields,
                                      &columns_selection));
   }
   return columns_selection;
