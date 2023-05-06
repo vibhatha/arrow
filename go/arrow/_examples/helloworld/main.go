@@ -17,9 +17,12 @@
 package main
 
 import (
+	"github.com/apache/arrow/go/v12/arrow"
 	"github.com/apache/arrow/go/v12/arrow/array"
 	"github.com/apache/arrow/go/v12/arrow/math"
 	"github.com/apache/arrow/go/v12/arrow/memory"
+
+	"fmt"
 )
 
 func main() {
@@ -29,4 +32,16 @@ func main() {
 
 	vec := fb.NewFloat64Array()
 	math.Float64.Sum(vec)
+
+	fields := []arrow.Field{
+					{Name: "f1-i32", Type: arrow.PrimitiveTypes.Int32},
+					{Name: "f2-f64", Type: arrow.PrimitiveTypes.Int64},
+				}
+
+	schema := arrow.NewSchema(fields, nil)
+
+	val1 := schema.FieldIndex("f1-i32")
+	val2 := schema.FieldIndex("f2-i64")
+
+	fmt.Print(val1, val2, "\n")
 }
