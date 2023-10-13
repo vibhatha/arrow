@@ -655,7 +655,21 @@ func NewDictionaryBuilderWithDict(mem memory.Allocator, dt *arrow.DictionaryType
 		}
 		return ret
 	case arrow.LARGE_STRING:
+		ret := &BinaryDictionaryBuilder{bldr}
+		if init != nil {
+			if err = ret.InsertStringDictValues(init.(*String)); err != nil {
+				panic(err)
+			}
+		}
+		return ret
 	case arrow.LARGE_BINARY:
+		ret := &BinaryDictionaryBuilder{bldr}
+		if init != nil {
+			if err = ret.InsertDictValues(init.(*Binary)); err != nil {
+				panic(err)
+			}
+		}
+		return ret
 	case arrow.LARGE_LIST:
 	case arrow.INTERVAL_MONTH_DAY_NANO:
 		ret := &MonthDayNanoDictionaryBuilder{bldr}
