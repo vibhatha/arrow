@@ -106,8 +106,7 @@ public class TestDatasetWriterMap extends TestDataset {
           TMP.create();
           final File writtenFolder = TMP.newFolder();
           final String writtenParquet = writtenFolder.toURI().toString();
-          DatasetFileWriter.write(rootAllocator(), reader, FileFormat.PARQUET,
-              writtenParquet);
+          DatasetFileWriter.write(rootAllocator(), reader, FileFormat.PARQUET, writtenParquet);
         }
       }
     }
