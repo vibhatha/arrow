@@ -41,7 +41,6 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.util.ByteArrayReadableSeekableByteChannel;
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.jupiter.api.Disabled;
 import org.junit.rules.TemporaryFolder;
 
 public class TestDatasetWriterMap extends TestDataset {
@@ -97,7 +96,6 @@ public class TestDatasetWriterMap extends TestDataset {
   }
 
   @Test
-  @Disabled("Test Disabled")
   public void testAllTypesParquet() throws Exception {
     try (VectorSchemaRoot root = generateAllTypesVector(rootAllocator())) {
       byte[] featherData = serializeFile(root);
@@ -106,6 +104,7 @@ public class TestDatasetWriterMap extends TestDataset {
           TMP.create();
           final File writtenFolder = TMP.newFolder();
           final String writtenParquet = writtenFolder.toURI().toString();
+          System.out.println("Written Parquet: " + writtenParquet);
           DatasetFileWriter.write(rootAllocator(), reader, FileFormat.PARQUET, writtenParquet);
         }
       }
