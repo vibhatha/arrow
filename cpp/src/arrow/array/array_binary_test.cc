@@ -30,6 +30,7 @@
 #include "arrow/array/validate.h"
 #include "arrow/buffer.h"
 #include "arrow/memory_pool.h"
+#include "arrow/result.h"
 #include "arrow/status.h"
 #include "arrow/testing/builder.h"
 #include "arrow/testing/gtest_util.h"
@@ -393,7 +394,8 @@ TEST(StringViewArray, Validate) {
 
   // empty array with some data buffers is valid
   EXPECT_THAT(MakeBinaryViewArray({buffer_s, buffer_y}, {}), Ok());
-
+  ASSERT_OK_AND_ASSIGN(auto a1, MakeBinaryViewArray({buffer_s, buffer_y}, {}));
+  std::cout << a1->ToString() << std::endl;
   // inline views need not have a corresponding buffer
   EXPECT_THAT(MakeBinaryViewArray({},
                                   {
@@ -402,7 +404,13 @@ TEST(StringViewArray, Validate) {
                                       util::ToInlineBinaryView("inline me"),
                                   }),
               Ok());
-
+  ASSERT_OK_AND_ASSIGN(auto a2, MakeBinaryViewArray({buffer_s, buffer_y},
+                                  {
+                                      util::ToInlineBinaryView("hello"),
+                                      util::ToInlineBinaryView("world"),
+                                      util::ToInlineBinaryView("inline me"),
+                                  }));
+  std::cout << a2->ToString() << std::endl;
   // non-inline views are expected to reference only buffers managed by the array
   EXPECT_THAT(
       MakeBinaryViewArray(
@@ -410,6 +418,13 @@ TEST(StringViewArray, Validate) {
           {util::ToBinaryView("supe", static_cast<int32_t>(buffer_s->size()), 0, 0),
            util::ToBinaryView("yyyy", static_cast<int32_t>(buffer_y->size()), 1, 0)}),
       Ok());
+  ASSERT_OK_AND_ASSIGN(auto a3, MakeBinaryViewArray(
+          {buffer_s, buffer_y},
+          {util::ToBinaryView("supe", static_cast<int32_t>(buffer_s->size()), 0, 0),
+           util::ToBinaryView("yyyy", static_cast<int32_t>(buffer_y->size()), 1, 0),
+           util::ToBinaryView("supe", static_cast<int32_t>(buffer_y->size()), 0, 0)}));
+  std::cout << buffer_s->size() << ", " << buffer_y->size() << std::endl;
+  std::cout << a3->ToString() << std::endl;
 
   // views may not reference data buffers not present in the array
   EXPECT_THAT(
