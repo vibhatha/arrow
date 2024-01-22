@@ -895,7 +895,7 @@ public abstract class BaseLargeVariableWidthVector extends BaseValueVector
       reallocValidityAndOffsetBuffers();
     }
     fillHoles(valueCount);
-    lastSet = valueCount - 1;
+    // lastSet = valueCount - 1;
     setReaderAndWriterIndex();
   }
 
