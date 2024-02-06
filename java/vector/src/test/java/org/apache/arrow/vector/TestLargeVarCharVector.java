@@ -88,6 +88,32 @@ public class TestLargeVarCharVector {
   }
 
   @Test
+  public void testStringRepresentation() {
+    System.out.println("testStringRepresentation");
+    try (BufferAllocator childAllocator1 = allocator.newChildAllocator("child1", 1000000, 1000000);
+        VarCharVector v1 = new VarCharVector("v1", childAllocator1)) {
+      v1.allocateNew(10);
+      v1.set(0, "one".getBytes());
+      v1.set(1, "two".getBytes());
+      v1.set(2, "three".getBytes());
+      v1.set(3, "four".getBytes());
+      v1.set(4, "five".getBytes());
+      v1.set(5, "six".getBytes());
+      v1.set(6, "seven".getBytes());
+      v1.set(7, "eight".getBytes());
+      v1.set(8, "nine".getBytes());
+      v1.set(9, "zero".getBytes());
+
+      v1.setValueCount(10);
+
+      System.out.println(v1);
+
+      byte[] v0 = v1.get(0);
+      System.out.println(new String(v0, StandardCharsets.UTF_8));
+    }
+  }
+
+  @Test
   public void testCopyValueSafe() {
     try (final LargeVarCharVector largeVarCharVector = new LargeVarCharVector("myvector", allocator);
          final LargeVarCharVector newLargeVarCharVector = new LargeVarCharVector("newvector", allocator)) {
