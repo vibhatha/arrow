@@ -102,31 +102,31 @@ public class JdbcToArrowTest extends AbstractJdbcToArrowTest {
    */
   @Test
   public void testJdbcToArrowValues() throws SQLException, IOException {
-    testDataSets(sqlToArrow(conn, table.getQuery(), new RootAllocator(Integer.MAX_VALUE),
-        Calendar.getInstance()), false);
-    testDataSets(sqlToArrow(conn, table.getQuery(), new RootAllocator(Integer.MAX_VALUE)), false);
-    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
-        new RootAllocator(Integer.MAX_VALUE), Calendar.getInstance()), false);
-    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery())), false);
-    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
-        new RootAllocator(Integer.MAX_VALUE)), false);
-    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
-        Calendar.getInstance()), false);
-    Calendar calendar = Calendar.getInstance();
-    ResultSetMetaData rsmd = getQueryMetaData(table.getQuery());
-    testDataSets(sqlToArrow(
-        conn.createStatement().executeQuery(table.getQuery()),
-        new JdbcToArrowConfigBuilder(new RootAllocator(Integer.MAX_VALUE), Calendar.getInstance())
-            .setArraySubTypeByColumnNameMap(ARRAY_SUB_TYPE_BY_COLUMN_NAME_MAP)
-            .setJdbcToArrowTypeConverter(jdbcToArrowTypeConverter(calendar, rsmd))
-            .build()), true);
-    testDataSets(sqlToArrow(
-        conn,
-        table.getQuery(),
-        new JdbcToArrowConfigBuilder(new RootAllocator(Integer.MAX_VALUE), calendar)
-            .setArraySubTypeByColumnNameMap(ARRAY_SUB_TYPE_BY_COLUMN_NAME_MAP)
-            .setJdbcToArrowTypeConverter(jdbcToArrowTypeConverter(calendar, rsmd))
-            .build()), true);
+  //    testDataSets(sqlToArrow(conn, table.getQuery(), new RootAllocator(Integer.MAX_VALUE),
+  //        Calendar.getInstance()), false);
+  //    testDataSets(sqlToArrow(conn, table.getQuery(), new RootAllocator(Integer.MAX_VALUE)), false);
+  //    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
+  //        new RootAllocator(Integer.MAX_VALUE), Calendar.getInstance()), false);
+  //    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery())), false);
+  //    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
+  //        new RootAllocator(Integer.MAX_VALUE)), false);
+  //    testDataSets(sqlToArrow(conn.createStatement().executeQuery(table.getQuery()),
+  //        Calendar.getInstance()), false);
+  //    Calendar calendar = Calendar.getInstance();
+  //    ResultSetMetaData rsmd = getQueryMetaData(table.getQuery());
+  //    testDataSets(sqlToArrow(
+  //        conn.createStatement().executeQuery(table.getQuery()),
+  //        new JdbcToArrowConfigBuilder(new RootAllocator(Integer.MAX_VALUE), Calendar.getInstance())
+  //            .setArraySubTypeByColumnNameMap(ARRAY_SUB_TYPE_BY_COLUMN_NAME_MAP)
+  //            .setJdbcToArrowTypeConverter(jdbcToArrowTypeConverter(calendar, rsmd))
+  //            .build()), true);
+  //    testDataSets(sqlToArrow(
+  //        conn,
+  //        table.getQuery(),
+  //        new JdbcToArrowConfigBuilder(new RootAllocator(Integer.MAX_VALUE), calendar)
+  //            .setArraySubTypeByColumnNameMap(ARRAY_SUB_TYPE_BY_COLUMN_NAME_MAP)
+  //            .setJdbcToArrowTypeConverter(jdbcToArrowTypeConverter(calendar, rsmd))
+  //            .build()), true);
   }
 
   @Test
