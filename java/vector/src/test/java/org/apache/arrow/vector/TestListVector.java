@@ -64,6 +64,39 @@ public class TestListVector {
   }
 
   @Test
+  public void testBasicList() {
+    // [[12, -7, 25], null, [0, -127, 127, 50], []]
+    try (ListVector inVector = ListVector.empty("input", allocator)) {
+      UnionListWriter writer = inVector.getWriter();
+      writer.allocate();
+
+      writer.setPosition(0);
+      writer.startList();
+      writer.bigInt().writeBigInt(127);
+      writer.bigInt().writeBigInt(-7);
+      writer.bigInt().writeBigInt(25);
+      writer.endList();
+
+      writer.setPosition(2);
+      writer.startList();
+      writer.bigInt().writeBigInt(0);
+      writer.bigInt().writeBigInt(-127);
+      writer.bigInt().writeBigInt(127);
+      writer.bigInt().writeBigInt(50);
+      writer.endList();
+
+      writer.setPosition(3);
+      writer.startList();
+      writer.endList();
+
+      writer.setValueCount(4);
+      inVector.setValueCount(4);
+
+      System.out.println(inVector);
+    }
+  }
+
+  @Test
   public void testCopyFrom() throws Exception {
     try (ListVector inVector = ListVector.empty("input", allocator);
          ListVector outVector = ListVector.empty("output", allocator)) {
