@@ -92,6 +92,17 @@ public class VectorUnloader {
   private void appendNodes(FieldVector vector, List<ArrowFieldNode> nodes, List<ArrowBuf> buffers) {
     nodes.add(new ArrowFieldNode(vector.getValueCount(), includeNullCount ? vector.getNullCount() : -1));
     List<ArrowBuf> fieldBuffers = vector.getFieldBuffers();
+    /*
+    * For MinorTypes' VarCharView and VarBinarView
+    * The expectedBufferCount doesn't make sense as it is not a fixed size.
+    * So this validation doesn't make sense.
+    * We should maybe validate it as minimum buffer count or make that feature unsupported.
+    *
+    * For the validation, we should only check if this number of buffers is greater than or equal 2
+    * since the validity and view buffers are must.
+    * TODO:
+    *  check TypeLayout.getTypeBufferCount usage across the project and document the expected behavior.
+    */
     int expectedBufferCount = TypeLayout.getTypeBufferCount(vector.getField().getType());
     if (fieldBuffers.size() != expectedBufferCount) {
       throw new IllegalArgumentException(String.format(
