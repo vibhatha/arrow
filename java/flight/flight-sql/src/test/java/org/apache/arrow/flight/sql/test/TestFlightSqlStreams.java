@@ -52,9 +52,9 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.util.Text;
 import org.hamcrest.MatcherAssert;
-import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.google.common.collect.ImmutableList;
@@ -202,8 +202,8 @@ public class TestFlightSqlStreams {
   private static FlightServer server;
   private static FlightSqlClient sqlClient;
 
-  @BeforeAll
-  public static void setUp() throws Exception {
+  @BeforeEach
+  public void setUp() throws Exception {
     allocator = new RootAllocator(Integer.MAX_VALUE);
 
     final Location serverLocation = Location.forGrpcInsecure("localhost", 0);
@@ -215,8 +215,8 @@ public class TestFlightSqlStreams {
     sqlClient = new FlightSqlClient(FlightClient.builder(allocator, clientLocation).build());
   }
 
-  @AfterAll
-  public static void tearDown() throws Exception {
+  @AfterEach
+  public void tearDown() throws Exception {
     close(sqlClient, server);
 
     // Manually close all child allocators.
