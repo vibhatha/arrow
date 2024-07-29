@@ -72,6 +72,63 @@ public class TestArrowBuf {
     }
   }
 
+  private void printArrowBuf(ArrowBuf buf, int length) {
+    for (int i = 0; i < length; i++) {
+      System.out.print(buf.getByte(i) + ", ");
+    }
+    System.out.println();
+  }
+
+  private void setValues(ArrowBuf buf, int multiplier) {
+    final long capacity = buf.capacity();
+    for (int i = 0; i < capacity; i++) {
+      buf.setByte(i, (byte) i * multiplier);
+    }
+  }
+
+  @Test
+  public void testDerivedBuffer() {
+    try (BufferAllocator allocator = new RootAllocator(128)) {
+      ArrowBuf buf = allocator.buffer(5);
+      buf.setByte(0, 1);
+      buf.setByte(1, 2);
+      buf.setByte(2, 3);
+      buf.setByte(3, 4);
+      buf.setByte(4, 5);
+      ReferenceManager referenceManager1 = buf.getReferenceManager();
+      ArrowBuf newBuf = buf.getReferenceManager().deriveBuffer(buf, 2, 2);
+      ReferenceManager referenceManager2 = newBuf.getReferenceManager();
+      assert referenceManager1 instanceof BufferLedger;
+      assert referenceManager2 instanceof BufferLedger;
+      BufferLedger ledger1 = (BufferLedger) referenceManager1;
+      BufferLedger ledger2 = (BufferLedger) referenceManager2;
+
+      System.out.println("Buf 1 Ledger: " + ledger1.isOwningLedger());
+      System.out.println("Buf 2 Ledger: " + ledger2.isOwningLedger());
+      System.out.println("Buf 1: " + buf);
+      System.out.println("Buf 2: " + newBuf);
+      System.out.println("Buf 1 ref count(1): " + buf.refCnt());
+      System.out.println("Buf 2 ref count(1): " + newBuf.refCnt());
+
+      System.out.println("Buf 1 data: ");
+      printArrowBuf(buf, 5);
+      System.out.println("Buf 2 data: ");
+      printArrowBuf(newBuf, 2);
+
+      ArrowBuf buf3 = ((BufferLedger) referenceManager1).newArrowBuf(3, null);
+      setValues(buf3, 3);
+      System.out.println("Buf 3 data: ");
+      printArrowBuf(buf3, 3);
+
+      System.out.println("Buf 1 data (again): ");
+      printArrowBuf(buf, 5);
+      System.out.println("Buf 2 data (again): ");
+      printArrowBuf(newBuf, 2);
+
+      ledger1.release();
+    }
+  }
+
   @Test
   public void testSetBytesSliced() {
     int arrLength = 64;
